@@ -11,11 +11,11 @@ async function handleErrors(request, func) {
       // frame instead.
       let pair = new WebSocketPair();
       pair[1].accept();
-      pair[1].send(JSON.stringify({error: err.stack}));
+      pair[1].send(JSON.stringify({ error: err.stack }));
       pair[1].close(1011, "Uncaught exception during session setup");
       return new Response(null, { status: 101, webSocket: pair[0] });
     } else {
-      return new Response(err.stack, {status: 500});
+      return new Response(err.stack, { status: 500 });
     }
   }
 }
@@ -28,10 +28,12 @@ export default {
       // We have received an HTTP request! Parse the URL and route the request.
 
       let url = new URL(request.url);
-      let path = url.pathname.slice(1).split('/');
+      let path = url.pathname.slice(1).split("/");
 
       if (!path[0]) {
-        return new Response("You are in the wrong place", {headers: {"Content-Type": "text/html;charset=UTF-8"}});
+        return new Response("You are in the wrong place", {
+          headers: { "Content-Type": "text/html;charset=UTF-8" },
+        });
       }
 
       switch (path[0]) {
@@ -40,15 +42,17 @@ export default {
           return handleApiRequest(path.slice(1), request, env);
 
         default:
-          return new Response("Not found", {status: 404});
+          return new Response("Not found", { status: 404 });
       }
     });
-  }
-}
+  },
+};
 
 async function handleApiRequest(path, request, env) {
   if (!path[0]) {
-    return new Response("Missing path", {headers: {"Content-Type": "text/html;charset=UTF-8"}});
+    return new Response("Missing path", {
+      headers: { "Content-Type": "text/html;charset=UTF-8" },
+    });
   }
 
   // /api/create - returns id of a new sync chain
@@ -58,26 +62,28 @@ async function handleApiRequest(path, request, env) {
   switch (path[0]) {
     case "create": {
       if (request.method != "POST") {
-        return new Response("Method not allowed", {status: 405});
+        return new Response("Method not allowed", { status: 405 });
       }
       let id = env.chains.newUniqueId();
-      return new Response(id.toString(), {headers: {"Access-Control-Allow-Origin": "*"}});
+      return new Response(id.toString(), {
+        headers: { "Access-Control-Allow-Origin": "*" },
+      });
     }
     case "connect": {
       if (request.method != "POST") {
-        return new Response("Method not allowed", {status: 405});
+        return new Response("Method not allowed", { status: 405 });
       }
-      let body = await request.json()
-      let name = body.name
+      let body = await request.json();
+      let name = body.name;
 
-      let id
+      let id;
       if (name.match(/^[0-9a-f]{64}$/)) {
-        id = env.chains.idFromString(name)
+        id = env.chains.idFromString(name);
       } else {
-        return new Response("Invalid ID", {status: 404});
+        return new Response("Invalid ID", { status: 404 });
       }
 
-      let syncChain = env.chains.get(id)
+      let syncChain = env.chains.get(id);
 
       // Forward rest of chain to the Durable Object
       let newUrl = new URL(request.url);
@@ -86,7 +92,7 @@ async function handleApiRequest(path, request, env) {
       return syncChain.fetch(newUrl, request);
     }
     default:
-      return new Response("Not found", {status: 404});
+      return new Response("Not found", { status: 404 });
   }
 }
 
@@ -111,7 +117,7 @@ export class SyncChain {
         case "/websocket": {
           // A client is trying to establish a new WebSocket session.
           if (request.headers.get("Upgrade") != "websocket") {
-            return new Response("expected websocket", {status: 400});
+            return new Response("expected websocket", { status: 400 });
           }
 
           // Get the client's IP address for use with the rate limiter.
@@ -131,7 +137,7 @@ export class SyncChain {
           return new Response(null, { status: 101, webSocket: pair[0] });
         }
         default:
-          return new Response("Not found", {status: 404});
+          return new Response("Not found", { status: 404 });
       }
     });
   }
@@ -150,13 +156,13 @@ export class SyncChain {
     this.sessions.push(session);
 
     // On "close" and "error" events, remove the WebSocket from the sessions list
-    let closeOrErrorHandler = evt => {
+    let closeOrErrorHandler = (evt) => {
       session.dead = true;
-      this.sessions = this.sessions.filter(member => member !== session);
+      this.sessions = this.sessions.filter((member) => member !== session);
     };
     webSocket.addEventListener("close", closeOrErrorHandler);
     webSocket.addEventListener("error", closeOrErrorHandler);
-    webSocket.addEventListener("message", async msg => {
+    webSocket.addEventListener("message", async (msg) => {
       try {
         if (session.dead) {
           // We received a message but marked the session as dead - should never happen but hey
@@ -177,20 +183,21 @@ export class SyncChain {
 
         { method: getread, since: TIMESTAMP }
         */
-        let data = JSON.parse(msg.data)
+        let data = JSON.parse(msg.data);
 
         switch (data.method) {
           case "markasread":
-            await this.markAsRead(data, session)
+            await this.markAsRead(data, session);
           default:
-            webSocket.send(JSON.stringify({error: "Unknown method: " + data.method}));
+            webSocket.send(
+              JSON.stringify({ error: "Unknown method: " + data.method })
+            );
         }
-
       } catch (err) {
         // Report any exceptions directly back to the client. As with our handleErrors() this
         // probably isn't what you'd want to do in production, but it's convenient when testing.
-        webSocket.send(JSON.stringify({error: err.stack}));
-      }  
+        webSocket.send(JSON.stringify({ error: err.stack }));
+      }
     });
   }
 
@@ -212,10 +219,10 @@ export class SyncChain {
 
   broadcast(data, senderSession) {
     // Update sessions list in case any of the sessions are dead
-    this.sessions = this.sessions.filter(session => {
+    this.sessions = this.sessions.filter((session) => {
       // Don't send to yourself
       if (session === senderSession) {
-        return true
+        return true;
       }
       try {
         session.webSocket.send(data);
