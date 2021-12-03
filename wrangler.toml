@@ -1,0 +1,21 @@
+name = "feeder-sync"
+type = "javascript"
+account_id = "ab12e512c62341096578e71cab326c00"
+workers_dev = true
+compatibility_date = "2021-12-03"
+
+[build.upload]
+format = "modules"
+dir = "src"
+main = "./main.mjs"
+rules = []
+
+[durable_objects]
+bindings = [
+ { name = "chains", class_name = "SyncChain" },
+#  { name = "limiters", class_name = "RateLimiter" }
+]
+
+[[migrations]]
+tag = "v1" # Should be unique for each entry
+new_classes = ["SyncChain"]
