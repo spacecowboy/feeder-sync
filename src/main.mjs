@@ -5,6 +5,7 @@ async function handleErrors(request, func) {
   try {
     return await func();
   } catch (err) {
+    console.log(`error: ${error}, ${error.stack}`);
     if (request.headers.get("Upgrade") == "websocket") {
       // Annoyingly, if we return an HTTP error in response to a WebSocket request, Chrome devtools
       // won't show us the response body! So... let's send a WebSocket response with an error
@@ -44,7 +45,7 @@ export default {
           return handleApiRequest(path.slice(1), request, env);
 
         default:
-          return new Response("Not found", { status: 404 });
+          return new Response(`Not found: ${path[0]}`, { status: 404 });
       }
     });
   },
@@ -52,13 +53,11 @@ export default {
 
 async function handleApiRequest(path, request, env) {
   if (!path[0]) {
-    return new Response("Missing path", {
-      headers: { "Content-Type": "text/html;charset=UTF-8" },
-    });
+    return new Response("Missing path", { status: 404 });
   }
 
   // /api/create - returns id of a new sync chain
-  // /api/connect/websocket - connects to a specific sync chain (and creates it if missing)
+  // /api/connect/ID/websocket - connects to a specific sync chain (and creates it if missing)
   // /api/markasread - marks an article as read and broadcasts to other units
   // /api/getread - requests a broadcast of items marked as read since <TIMESTAMP>
   switch (path[0]) {
@@ -72,11 +71,17 @@ async function handleApiRequest(path, request, env) {
       });
     }
     case "connect": {
-      if (request.method != "POST") {
+      if (request.method != "GET") {
         return new Response("Method not allowed", { status: 405 });
       }
-      let body = await request.json();
-      let name = body.syncChainId;
+      if (!path[1]) {
+        console.log("Missing id in path");
+        return new Response("Missing id in path", { status: 400 });
+      }
+
+      // TODO
+      // request.headers.get('Authorization');
+      let name = path[1];
 
       let id;
       if (name.match(/^[0-9a-f]{64}$/)) {
@@ -89,12 +94,12 @@ async function handleApiRequest(path, request, env) {
 
       // Forward rest of chain to the Durable Object
       let newUrl = new URL(request.url);
-      newUrl.pathname = "/" + path.slice(1).join("/");
+      newUrl.pathname = "/" + path.slice(2).join("/");
 
       return syncChain.fetch(newUrl, request);
     }
     default:
-      return new Response("Not found", { status: 404 });
+      return new Response(`Not found: ${path[0]}`, { status: 404 });
   }
 }
 
@@ -119,7 +124,8 @@ export class SyncChain {
         case "/websocket": {
           // A client is trying to establish a new WebSocket session.
           if (request.headers.get("Upgrade") != "websocket") {
-            return new Response("expected websocket", { status: 400 });
+            console.log("Expected websocket upgrade");
+            return new Response("expected websocket upgrade", { status: 400 });
           }
 
           // Get the client's IP address for use with the rate limiter.
@@ -139,7 +145,7 @@ export class SyncChain {
           return new Response(null, { status: 101, webSocket: pair[0] });
         }
         default:
-          return new Response("Not found", { status: 404 });
+          return new Response(`Not found: ${url.pathname}`, { status: 404 });
       }
     });
   }
@@ -190,15 +196,23 @@ export class SyncChain {
         switch (data.type) {
           case "READ_MARK":
             await this.markAsRead(data, session);
+            return;
+          case "GET_READ":
+            await this.getRead(data, session);
+            return;
           default:
             webSocket.send(
-              JSON.stringify({ error: "Unknown type: " + data.type })
+              JSON.stringify({
+                type: "ERROR",
+                error: "Unknown type: " + data.type,
+              })
             );
+            return;
         }
       } catch (err) {
         // Report any exceptions directly back to the client. As with our handleErrors() this
         // probably isn't what you'd want to do in production, but it's convenient when testing.
-        webSocket.send(JSON.stringify({ error: err.stack }));
+        webSocket.send(JSON.stringify({ type: "ERROR", error: err.stack }));
       }
     });
   }
@@ -209,13 +223,15 @@ export class SyncChain {
     // them sequential timestamps, so at least the ordering is maintained.
     this.lastTimestamp = Math.max(Date.now(), this.lastTimestamp + 1);
     data.timestamp = this.lastTimestamp;
+    let dataStr = JSON.stringify(data);
 
     // Save message.
+    // TODO TTL metadata
+    // TODO TTL different in prod vs dev
     let key = new Date(data.timestamp).toISOString();
-    await this.storage.put(key, dataStr);
+    await this.storage.put(key, dataStr, { expirationTtl: 3600 });
 
     // Broadcast the message to all other WebSockets.
-    let dataStr = JSON.stringify(data);
     this.broadcast(dataStr, session);
   }
 
@@ -234,6 +250,38 @@ export class SyncChain {
         session.dead = true;
         return false;
       }
+    });
+  }
+
+  async getRead(data, session) {
+    const since = data.since;
+
+    // TODO binary search
+    // TODO prefix them
+
+    /*
+    {
+  keys: [{ name: "foo", expiration: 1234, metadata: {someMetadataKey: "someMetadataValue"}}],
+  list_complete: false,
+  cursor: "6Ck1la0VxJ0djhidm1MdX2FyD"
+}
+*/
+
+    // TODO prefix on read marks
+    // TODO what about start option?
+    // TODO cursor // list({"cursor": cursor})
+    const storage = await this.storage.list({ limit: 100 });
+    const values = [...storage.values()];
+    session.webSocket.send(
+      JSON.stringify({ type: "ERROR", error: JSON.stringify(values) })
+    );
+
+    values.forEach((value) => {
+      // key is in ISO Date
+      // const timestamp = parseInt(value.name)
+      // if (timestamp > since) {
+      session.webSocket.send(value);
+      // }
     });
   }
 }
