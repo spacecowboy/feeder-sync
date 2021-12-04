@@ -27,6 +27,8 @@ export default {
     return await handleErrors(request, async () => {
       // We have received an HTTP request! Parse the URL and route the request.
 
+      // TODO enforce HTTPS
+
       let url = new URL(request.url);
       let path = url.pathname.slice(1).split("/");
 
@@ -74,7 +76,7 @@ async function handleApiRequest(path, request, env) {
         return new Response("Method not allowed", { status: 405 });
       }
       let body = await request.json();
-      let name = body.name;
+      let name = body.syncChainId;
 
       let id;
       if (name.match(/^[0-9a-f]{64}$/)) {
@@ -175,22 +177,22 @@ export class SyncChain {
         /*
         Format of JSON
         
-        { method: METHOD, ...}
+        { type: METHOD, ...}
 
         where
 
-        { method: markasread, articleId: ARTICLEID }
+        { type: markasread, articleId: ARTICLEID }
 
-        { method: getread, since: TIMESTAMP }
+        { type: getread, since: TIMESTAMP }
         */
         let data = JSON.parse(msg.data);
 
-        switch (data.method) {
-          case "markasread":
+        switch (data.type) {
+          case "READ_MARK":
             await this.markAsRead(data, session);
           default:
             webSocket.send(
-              JSON.stringify({ error: "Unknown method: " + data.method })
+              JSON.stringify({ error: "Unknown type: " + data.type })
             );
         }
       } catch (err) {
