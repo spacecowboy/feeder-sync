@@ -126,6 +126,11 @@ export class SyncChain {
             return new Response("expected websocket upgrade", { status: 400 });
           }
 
+          const authCode = await this.verifyAuth(request);
+          if (authCode != 200) {
+            return new Response("Go away", { status: authCode });
+          }
+
           // Get the client's IP address for use with the rate limiter.
           const ip = request.headers.get("CF-Connecting-IP");
 
@@ -146,6 +151,31 @@ export class SyncChain {
           return new Response(`Not found: ${url.pathname}`, { status: 404 });
       }
     });
+  }
+
+  async verifyAuth(request: Request): Promise<number> {
+    const authHeader = request.headers.get("Authorization");
+
+    if (!authHeader) {
+      return 401; // Unauthorized
+    }
+
+    if (authHeader.length < 64) {
+      return 400;
+    }
+
+    const existingAuth = await this.storage.get("Authorization");
+
+    if (!existingAuth) {
+      this.storage.put("Authorization", authHeader);
+      return 200;
+    }
+
+    if (existingAuth === authHeader) {
+      return 200;
+    }
+
+    return 401;
   }
 
   async handleSession(webSocket: WebSocket, ip: string | null): Promise<void> {
