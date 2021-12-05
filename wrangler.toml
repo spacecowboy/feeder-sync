@@ -4,9 +4,12 @@ account_id = "ab12e512c62341096578e71cab326c00"
 workers_dev = true
 compatibility_date = "2021-12-03"
 
+[build]
+command = "npm run mjs"
+
 [build.upload]
 format = "modules"
-dir = "src"
+dir = "dist"
 main = "./main.mjs"
 rules = []
 

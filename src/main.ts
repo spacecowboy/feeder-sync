@@ -1,37 +1,35 @@
-// `handleErrors()` is a little utility function that can wrap an HTTP request handler in a
-// try/catch and return errors to the client. You probably wouldn't want to use this in production
-// code but it is convenient when debugging and iterating.
-async function handleErrors(request, func) {
+async function handleErrors(
+  request: Request,
+  func: () => Promise<Response>
+): Promise<Response> {
   try {
     return await func();
   } catch (err) {
-    console.log(`error: ${error}, ${error.stack}`);
+    console.log(`error: ${err}`);
     if (request.headers.get("Upgrade") == "websocket") {
       // Annoyingly, if we return an HTTP error in response to a WebSocket request, Chrome devtools
       // won't show us the response body! So... let's send a WebSocket response with an error
       // frame instead.
-      let pair = new WebSocketPair();
+      const pair = new WebSocketPair();
       pair[1].accept();
-      pair[1].send(JSON.stringify({ error: err.stack }));
+      pair[1].send(JSON.stringify({ type: "ERROR", error: err }));
       pair[1].close(1011, "Uncaught exception during session setup");
       return new Response(null, { status: 101, webSocket: pair[0] });
     } else {
-      return new Response(err.stack, { status: 500 });
+      return new Response(null, { status: 500 });
     }
   }
 }
 
-// `fetch` isn't the only handler. If your worker runs on a Cron schedule, it will receive calls
-// to a handler named `scheduled`, which should be exported here in a similar way.
 export default {
-  async fetch(request, env) {
+  async fetch(request: Request, env: EnvBinding): Promise<Response> {
     return await handleErrors(request, async () => {
       // We have received an HTTP request! Parse the URL and route the request.
 
       // TODO enforce HTTPS
 
-      let url = new URL(request.url);
-      let path = url.pathname.slice(1).split("/");
+      const url = new URL(request.url);
+      const path = url.pathname.slice(1).split("/");
 
       if (!path[0]) {
         return new Response("You are in the wrong place", {
@@ -51,7 +49,11 @@ export default {
   },
 };
 
-async function handleApiRequest(path, request, env) {
+async function handleApiRequest(
+  path: string[],
+  request: Request,
+  env: EnvBinding
+) {
   if (!path[0]) {
     return new Response("Missing path", { status: 404 });
   }
@@ -65,7 +67,7 @@ async function handleApiRequest(path, request, env) {
       if (request.method != "POST") {
         return new Response("Method not allowed", { status: 405 });
       }
-      let id = env.chains.newUniqueId();
+      const id = env.chains.newUniqueId();
       return new Response(id.toString(), {
         headers: { "Access-Control-Allow-Origin": "*" },
       });
@@ -81,7 +83,7 @@ async function handleApiRequest(path, request, env) {
 
       // TODO
       // request.headers.get('Authorization');
-      let name = path[1];
+      const name = path[1];
 
       let id;
       if (name.match(/^[0-9a-f]{64}$/)) {
@@ -90,10 +92,10 @@ async function handleApiRequest(path, request, env) {
         return new Response("Invalid ID", { status: 404 });
       }
 
-      let syncChain = env.chains.get(id);
+      const syncChain = env.chains.get(id);
 
       // Forward rest of chain to the Durable Object
-      let newUrl = new URL(request.url);
+      const newUrl = new URL(request.url);
       newUrl.pathname = "/" + path.slice(2).join("/");
 
       return syncChain.fetch(newUrl, request);
@@ -104,7 +106,12 @@ async function handleApiRequest(path, request, env) {
 }
 
 export class SyncChain {
-  constructor(state, env) {
+  lastTimestamp: number;
+  sessions: Session[];
+  env: unknown;
+  storage: DurableObjectStorage;
+
+  constructor(state: DurableObjectState, env: unknown) {
     this.storage = state.storage;
     this.env = env;
     this.sessions = [];
@@ -116,9 +123,9 @@ export class SyncChain {
     this.lastTimestamp = 0;
   }
 
-  async fetch(request) {
+  async fetch(request: Request): Promise<Response> {
     return await handleErrors(request, async () => {
-      let url = new URL(request.url);
+      const url = new URL(request.url);
 
       switch (url.pathname) {
         case "/websocket": {
@@ -129,14 +136,14 @@ export class SyncChain {
           }
 
           // Get the client's IP address for use with the rate limiter.
-          let ip = request.headers.get("CF-Connecting-IP");
+          const ip = request.headers.get("CF-Connecting-IP");
 
           // To accept the WebSocket request, we create a WebSocketPair (which is like a socketpair,
           // i.e. two WebSockets that talk to each other), we return one end of the pair in the
           // response, and we operate on the other end. Note that this API is not part of the
           // Fetch API standard; unfortunately, the Fetch API / Service Workers specs do not define
           // any way to act as a WebSocket server today.
-          let pair = new WebSocketPair();
+          const pair = new WebSocketPair();
 
           // We're going to take pair[1] as our end, and return pair[0] to the client.
           await this.handleSession(pair[1], ip);
@@ -150,27 +157,27 @@ export class SyncChain {
     });
   }
 
-  async handleSession(webSocket, ip) {
+  async handleSession(webSocket: WebSocket, ip: string | null): Promise<void> {
     // Accept our end of the WebSocket. This tells the runtime that we'll be terminating the
     // WebSocket in JavaScript, not sending it elsewhere.
     webSocket.accept();
 
     // TODO rate limiter
 
-    let session = {
+    const session = {
       webSocket,
       dead: false,
     };
     this.sessions.push(session);
 
     // On "close" and "error" events, remove the WebSocket from the sessions list
-    let closeOrErrorHandler = (evt) => {
+    const closeOrErrorHandler = (msg: Event) => {
       session.dead = true;
       this.sessions = this.sessions.filter((member) => member !== session);
     };
     webSocket.addEventListener("close", closeOrErrorHandler);
     webSocket.addEventListener("error", closeOrErrorHandler);
-    webSocket.addEventListener("message", async (msg) => {
+    webSocket.addEventListener("message", async (msg: MessageEvent) => {
       try {
         if (session.dead) {
           // We received a message but marked the session as dead - should never happen but hey
@@ -181,17 +188,29 @@ export class SyncChain {
         // TODO check rate limit
 
         /*
-        Format of JSON
-        
-        { type: METHOD, ...}
+          Format of JSON
+          
+          { type: METHOD, ...}
+  
+          where
+  
+          { type: markasread, articleId: ARTICLEID }
+  
+          { type: getread, since: TIMESTAMP }
+          */
+        let data;
 
-        where
-
-        { type: markasread, articleId: ARTICLEID }
-
-        { type: getread, since: TIMESTAMP }
-        */
-        let data = JSON.parse(msg.data);
+        if (typeof msg.data === "string") {
+          data = JSON.parse(msg.data);
+        } else {
+          webSocket.send(
+            JSON.stringify({
+              type: "ERROR",
+              error: "message data was not string",
+            })
+          );
+          return;
+        }
 
         switch (data.type) {
           case "READ_MARK":
@@ -212,30 +231,30 @@ export class SyncChain {
       } catch (err) {
         // Report any exceptions directly back to the client. As with our handleErrors() this
         // probably isn't what you'd want to do in production, but it's convenient when testing.
-        webSocket.send(JSON.stringify({ type: "ERROR", error: err.stack }));
+        webSocket.send(JSON.stringify({ type: "ERROR", error: err }));
       }
     });
   }
 
-  async markAsRead(data, session) {
+  async markAsRead(data: ReadMarkMessage, session: Session): Promise<void> {
     // Add timestamp. Here's where this.lastTimestamp comes in -- if we receive a bunch of
     // messages at the same time (or if the clock somehow goes backwards????), we'll assign
     // them sequential timestamps, so at least the ordering is maintained.
     this.lastTimestamp = Math.max(Date.now(), this.lastTimestamp + 1);
     data.timestamp = this.lastTimestamp;
-    let dataStr = JSON.stringify(data);
+    const dataStr = JSON.stringify(data);
 
     // Save message.
     // TODO TTL metadata
     // TODO TTL different in prod vs dev
-    let key = new Date(data.timestamp).toISOString();
-    await this.storage.put(key, dataStr, { expirationTtl: 3600 });
+    const key = new Date(data.timestamp).toISOString();
+    await this.storage.put(key, dataStr);
 
     // Broadcast the message to all other WebSockets.
     this.broadcast(dataStr, session);
   }
 
-  broadcast(data, senderSession) {
+  broadcast(data: string, senderSession: Session): void {
     // Update sessions list in case any of the sessions are dead
     this.sessions = this.sessions.filter((session) => {
       // Don't send to yourself
@@ -253,35 +272,51 @@ export class SyncChain {
     });
   }
 
-  async getRead(data, session) {
+  async getRead(data: GetReadMessage, session: Session): Promise<void> {
     const since = data.since;
 
     // TODO binary search
     // TODO prefix them
 
     /*
-    {
-  keys: [{ name: "foo", expiration: 1234, metadata: {someMetadataKey: "someMetadataValue"}}],
-  list_complete: false,
-  cursor: "6Ck1la0VxJ0djhidm1MdX2FyD"
-}
-*/
+      {
+    keys: [{ name: "foo", expiration: 1234, metadata: {someMetadataKey: "someMetadataValue"}}],
+    list_complete: false,
+    cursor: "6Ck1la0VxJ0djhidm1MdX2FyD"
+  }
+  */
 
     // TODO prefix on read marks
     // TODO what about start option?
     // TODO cursor // list({"cursor": cursor})
     const storage = await this.storage.list({ limit: 100 });
     const values = [...storage.values()];
-    session.webSocket.send(
-      JSON.stringify({ type: "ERROR", error: JSON.stringify(values) })
-    );
 
     values.forEach((value) => {
-      // key is in ISO Date
-      // const timestamp = parseInt(value.name)
-      // if (timestamp > since) {
-      session.webSocket.send(value);
+      if (typeof value === "string") {
+        // key is in ISO Date
+        // const timestamp = parseInt(value.name)
+        // if (timestamp > since) {
+        session.webSocket.send(value);
+      }
       // }
     });
   }
 }
+
+type EnvBinding = {
+  chains: any;
+};
+
+type Session = {
+  webSocket: WebSocket;
+  dead: boolean;
+};
+
+type ReadMarkMessage = {
+  timestamp: number;
+};
+
+type GetReadMessage = {
+  since: number;
+};
