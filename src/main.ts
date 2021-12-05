@@ -12,7 +12,8 @@ async function handleErrors(
       // frame instead.
       const pair = new WebSocketPair();
       pair[1].accept();
-      pair[1].send(JSON.stringify({ type: "ERROR", error: err }));
+      // @ts-ignore
+      pair[1].send(JSON.stringify({ type: "ERROR", error: err.stack }));
       pair[1].close(1011, "Uncaught exception during session setup");
       return new Response(null, { status: 101, webSocket: pair[0] });
     } else {
@@ -231,7 +232,8 @@ export class SyncChain {
       } catch (err) {
         // Report any exceptions directly back to the client. As with our handleErrors() this
         // probably isn't what you'd want to do in production, but it's convenient when testing.
-        webSocket.send(JSON.stringify({ type: "ERROR", error: err }));
+        // @ts-ignore
+        webSocket.send(JSON.stringify({ type: "ERROR", error: err.stack }));
       }
     });
   }
@@ -247,8 +249,12 @@ export class SyncChain {
     // Save message.
     // TODO TTL metadata
     // TODO TTL different in prod vs dev
-    const key = new Date(data.timestamp).toISOString();
+    // const suffix = new Date(data.timestamp).toISOString();
+    const suffix = data.timestamp.toString();
+    const key = `READMARK_${suffix}`;
     await this.storage.put(key, dataStr);
+
+    // TODO send latest timestamp to self
 
     // Broadcast the message to all other WebSockets.
     this.broadcast(dataStr, session);
@@ -274,32 +280,29 @@ export class SyncChain {
 
   async getRead(data: GetReadMessage, session: Session): Promise<void> {
     const since = data.since;
-
-    // TODO binary search
-    // TODO prefix them
-
+    // TODO pagination
     /*
-      {
-    keys: [{ name: "foo", expiration: 1234, metadata: {someMetadataKey: "someMetadataValue"}}],
-    list_complete: false,
-    cursor: "6Ck1la0VxJ0djhidm1MdX2FyD"
-  }
-  */
 
-    // TODO prefix on read marks
-    // TODO what about start option?
-    // TODO cursor // list({"cursor": cursor})
-    const storage = await this.storage.list({ limit: 100 });
+interface DurableObjectListOptions {
+  start?: string;
+  end?: string;
+  prefix?: string;
+  reverse?: boolean;
+  limit?: number;
+  allowConcurrency?: boolean;
+  noCache?: boolean;
+}
+    */
+    const storage = await this.storage.list({
+      prefix: "READMARK_",
+      start: `READMARK_${since.toString()}`,
+    });
     const values = [...storage.values()];
 
     values.forEach((value) => {
       if (typeof value === "string") {
-        // key is in ISO Date
-        // const timestamp = parseInt(value.name)
-        // if (timestamp > since) {
         session.webSocket.send(value);
       }
-      // }
     });
   }
 }

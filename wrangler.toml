@@ -22,3 +22,8 @@ bindings = [
 [[migrations]]
 tag = "v1" # Should be unique for each entry
 new_classes = ["SyncChain"]
+
+[[migrations]]
+tag = "v2"
+# Deleted the object manually
+new_classes = ["SyncChain"]
