@@ -5,11 +5,7 @@ async function handleErrors(
   try {
     return await func();
   } catch (err) {
-    console.log(`error: ${err}`);
     if (request.headers.get("Upgrade") == "websocket") {
-      // Annoyingly, if we return an HTTP error in response to a WebSocket request, Chrome devtools
-      // won't show us the response body! So... let's send a WebSocket response with an error
-      // frame instead.
       const pair = new WebSocketPair();
       pair[1].accept();
       // @ts-ignore
@@ -59,10 +55,6 @@ async function handleApiRequest(
     return new Response("Missing path", { status: 404 });
   }
 
-  // /api/create - returns id of a new sync chain
-  // /api/connect/ID/websocket - connects to a specific sync chain (and creates it if missing)
-  // /api/markasread - marks an article as read and broadcasts to other units
-  // /api/getread - requests a broadcast of items marked as read since <TIMESTAMP>
   switch (path[0]) {
     case "create": {
       if (request.method != "POST") {
@@ -78,7 +70,6 @@ async function handleApiRequest(
         return new Response("Method not allowed", { status: 405 });
       }
       if (!path[1]) {
-        console.log("Missing id in path");
         return new Response("Missing id in path", { status: 400 });
       }
 
@@ -132,7 +123,6 @@ export class SyncChain {
         case "/websocket": {
           // A client is trying to establish a new WebSocket session.
           if (request.headers.get("Upgrade") != "websocket") {
-            console.log("Expected websocket upgrade");
             return new Response("expected websocket upgrade", { status: 400 });
           }
 
@@ -187,18 +177,6 @@ export class SyncChain {
         }
 
         // TODO check rate limit
-
-        /*
-          Format of JSON
-          
-          { type: METHOD, ...}
-  
-          where
-  
-          { type: markasread, articleId: ARTICLEID }
-  
-          { type: getread, since: TIMESTAMP }
-          */
         let data;
 
         if (typeof msg.data === "string") {
