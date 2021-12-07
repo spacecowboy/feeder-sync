@@ -69,26 +69,24 @@ async function handleApiRequest(
       if (request.method != "GET") {
         return new Response("Method not allowed", { status: 405 });
       }
-      if (!path[1]) {
-        return new Response("Missing id in path", { status: 400 });
-      }
 
-      // TODO
-      // request.headers.get('Authorization');
-      const name = path[1];
+      const name = request.headers.get("X-FEEDER-ID");
+      if (!name) {
+        return new Response("Missing ID", { status: 400 });
+      }
 
       let id;
       if (name.match(/^[0-9a-f]{64}$/)) {
         id = env.chains.idFromString(name);
       } else {
-        return new Response("Invalid ID", { status: 404 });
+        return new Response("Invalid ID", { status: 400 });
       }
 
       const syncChain = env.chains.get(id);
 
       // Forward rest of chain to the Durable Object
       const newUrl = new URL(request.url);
-      newUrl.pathname = "/" + path.slice(2).join("/");
+      newUrl.pathname = "/" + path.slice(1).join("/");
 
       return syncChain.fetch(newUrl, request);
     }
@@ -126,11 +124,6 @@ export class SyncChain {
             return new Response("expected websocket upgrade", { status: 400 });
           }
 
-          const authCode = await this.verifyAuth(request);
-          if (authCode != 200) {
-            return new Response("Go away", { status: authCode });
-          }
-
           // Get the client's IP address for use with the rate limiter.
           const ip = request.headers.get("CF-Connecting-IP");
 
@@ -151,31 +144,6 @@ export class SyncChain {
           return new Response(`Not found: ${url.pathname}`, { status: 404 });
       }
     });
-  }
-
-  async verifyAuth(request: Request): Promise<number> {
-    const authHeader = request.headers.get("Authorization");
-
-    if (!authHeader) {
-      return 401; // Unauthorized
-    }
-
-    if (authHeader.length < 64) {
-      return 400;
-    }
-
-    const existingAuth = await this.storage.get("Authorization");
-
-    if (!existingAuth) {
-      this.storage.put("Authorization", authHeader);
-      return 200;
-    }
-
-    if (existingAuth === authHeader) {
-      return 200;
-    }
-
-    return 401;
   }
 
   async handleSession(webSocket: WebSocket, ip: string | null): Promise<void> {
