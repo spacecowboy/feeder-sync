@@ -22,10 +22,15 @@ export default {
   async fetch(request: Request, env: EnvBinding): Promise<Response> {
     return await handleErrors(request, async () => {
       // We have received an HTTP request! Parse the URL and route the request.
-
-      // TODO enforce HTTPS
-
       const url = new URL(request.url);
+
+      if (
+        "https:" !== url.protocol ||
+        "https" !== request.headers.get("x-forwarded-proto")
+      ) {
+        return new Response("Only https allowed", { status: 400 });
+      }
+
       const path = url.pathname.slice(1).split("/");
 
       if (!path[0]) {
