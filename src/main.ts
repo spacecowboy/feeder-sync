@@ -10,10 +10,16 @@ async function handleErrors(
       pair[1].accept();
       // @ts-ignore
       pair[1].send(JSON.stringify({ type: "ERROR", error: err.stack }));
-      pair[1].close(1011, "Uncaught exception during session setup");
-      return new Response(null, { status: 101, webSocket: pair[0] });
+      pair[1].close(1011, "Uncaught exception");
+      return new Response(null, {
+        status: 101,
+        webSocket: pair[0],
+      });
     } else {
-      return new Response(null, { status: 500 });
+      // @ts-ignore
+      return new Response(JSON.stringify({ type: "ERROR", error: err.stack }), {
+        status: 500,
+      });
     }
   }
 }
