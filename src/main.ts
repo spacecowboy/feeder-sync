@@ -9,7 +9,7 @@ async function handleErrors(
       const pair = new WebSocketPair();
       pair[1].accept();
       // @ts-ignore
-      pair[1].send(JSON.stringify({ type: "ERROR", error: err.stack }));
+      pair[1].send(JSON.stringify({ type: "E", error: err.stack }));
       pair[1].close(1011, "Uncaught exception");
       return new Response(null, {
         status: 101,
@@ -17,7 +17,7 @@ async function handleErrors(
       });
     } else {
       // @ts-ignore
-      return new Response(JSON.stringify({ type: "ERROR", error: err.stack }), {
+      return new Response(JSON.stringify({ type: "E", error: err.stack }), {
         status: 500,
       });
     }
@@ -193,7 +193,7 @@ export class SyncChain {
         } else {
           webSocket.send(
             JSON.stringify({
-              type: "ERROR",
+              type: "E",
               error: "message data was not string",
             })
           );
@@ -201,16 +201,16 @@ export class SyncChain {
         }
 
         switch (data.type) {
-          case "READ_MARK":
+          case "R":
             await this.markAsRead(data, session);
             return;
-          case "GET_READ":
+          case "G":
             await this.getRead(data, session);
             return;
           default:
             webSocket.send(
               JSON.stringify({
-                type: "ERROR",
+                type: "E",
                 error: "Unknown type: " + data.type,
               })
             );
@@ -220,7 +220,7 @@ export class SyncChain {
         // Report any exceptions directly back to the client. As with our handleErrors() this
         // probably isn't what you'd want to do in production, but it's convenient when testing.
         // @ts-ignore
-        webSocket.send(JSON.stringify({ type: "ERROR", error: err.stack }));
+        webSocket.send(JSON.stringify({ type: "E", error: err.stack }));
       }
     });
   }
@@ -238,7 +238,7 @@ export class SyncChain {
     // TODO TTL different in prod vs dev
     // const suffix = new Date(data.timestamp).toISOString();
     const suffix = data.timestamp.toString();
-    const key = `READMARK_${suffix}`;
+    const key = `R_${suffix}`;
     await this.storage.put(key, dataStr);
 
     // TODO send latest timestamp to self
@@ -266,7 +266,8 @@ export class SyncChain {
   }
 
   async getRead(data: GetReadMessage, session: Session): Promise<void> {
-    const since = data.since;
+    // Don't want including since timestamp so increase one ms
+    const since = data.since + 1;
     // TODO pagination
     /*
 
@@ -281,8 +282,8 @@ interface DurableObjectListOptions {
 }
     */
     const storage = await this.storage.list({
-      prefix: "READMARK_",
-      start: `READMARK_${since.toString()}`,
+      prefix: "R_",
+      start: `R_${since.toString()}`,
     });
     const values = [...storage.values()];
 
