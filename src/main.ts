@@ -266,8 +266,7 @@ export class SyncChain {
   }
 
   async getRead(data: GetReadMessage, session: Session): Promise<void> {
-    // Don't want including since timestamp so increase one ms
-    const since = data.since + 1;
+    const since = data.since;
     // TODO pagination
     /*
 
