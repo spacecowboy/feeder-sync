@@ -71,10 +71,33 @@ async function handleApiRequest(
       if (request.method != "POST") {
         return new Response("Method not allowed", { status: 405 });
       }
-      const id = env.chains.newUniqueId();
-      return new Response(id.toString(), {
+      const result: CreateResponse = {
+        id: env.chains.newUniqueId().toString(),
+      };
+      return new Response(JSON.stringify(result), {
         headers: { "Access-Control-Allow-Origin": "*" },
       });
+    }
+    case "readmark": {
+      const name = request.headers.get("X-FEEDER-ID");
+      if (!name) {
+        return new Response("Missing ID", { status: 400 });
+      }
+
+      let id;
+      if (name.match(/^[0-9a-f]{64}$/)) {
+        id = env.chains.idFromString(name);
+      } else {
+        return new Response("Invalid ID", { status: 400 });
+      }
+
+      const syncChain = env.chains.get(id);
+
+      // Forward to the Durable Object
+      const newUrl = new URL(request.url);
+      newUrl.pathname = "/" + path.join("/");
+
+      return syncChain.fetch(newUrl, request);
     }
     case "connect": {
       if (request.method != "GET") {
@@ -129,28 +152,46 @@ export class SyncChain {
       const url = new URL(request.url);
 
       switch (url.pathname) {
-        case "/websocket": {
-          // A client is trying to establish a new WebSocket session.
-          if (request.headers.get("Upgrade") != "websocket") {
-            return new Response("expected websocket upgrade", { status: 400 });
+        case "/readmark": {
+          switch (request.method) {
+            case "GET": {
+              // since query param
+              const since = url.searchParams.get("since");
+              if (typeof since === "string") {
+                return await this.getReadRest(parseInt(since));
+              }
+              return new Response(null, { status: 400 });
+            }
+            case "POST": {
+              const data = JSON.parse(await request.text());
+              return await this.markAsReadRest(data);
+            }
+            default:
+              return new Response(null, { status: 405 });
           }
-
-          // Get the client's IP address for use with the rate limiter.
-          const ip = request.headers.get("CF-Connecting-IP");
-
-          // To accept the WebSocket request, we create a WebSocketPair (which is like a socketpair,
-          // i.e. two WebSockets that talk to each other), we return one end of the pair in the
-          // response, and we operate on the other end. Note that this API is not part of the
-          // Fetch API standard; unfortunately, the Fetch API / Service Workers specs do not define
-          // any way to act as a WebSocket server today.
-          const pair = new WebSocketPair();
-
-          // We're going to take pair[1] as our end, and return pair[0] to the client.
-          await this.handleSession(pair[1], ip);
-
-          // Now we return the other end of the pair to the client.
-          return new Response(null, { status: 101, webSocket: pair[0] });
         }
+      //   case "/websocket": {
+      //     // A client is trying to establish a new WebSocket session.
+      //     if (request.headers.get("Upgrade") != "websocket") {
+      //       return new Response("expected websocket upgrade", { status: 400 });
+      //     }
+
+      //     // Get the client's IP address for use with the rate limiter.
+      //     const ip = request.headers.get("CF-Connecting-IP");
+
+      //     // To accept the WebSocket request, we create a WebSocketPair (which is like a socketpair,
+      //     // i.e. two WebSockets that talk to each other), we return one end of the pair in the
+      //     // response, and we operate on the other end. Note that this API is not part of the
+      //     // Fetch API standard; unfortunately, the Fetch API / Service Workers specs do not define
+      //     // any way to act as a WebSocket server today.
+      //     const pair = new WebSocketPair();
+
+      //     // We're going to take pair[1] as our end, and return pair[0] to the client.
+      //     await this.handleSession(pair[1], ip);
+
+      //     // Now we return the other end of the pair to the client.
+      //     return new Response(null, { status: 101, webSocket: pair[0] });
+      //   }
         default:
           return new Response(`Not found: ${url.pathname}`, { status: 404 });
       }
@@ -234,9 +275,6 @@ export class SyncChain {
     const dataStr = JSON.stringify(data);
 
     // Save message.
-    // TODO TTL metadata
-    // TODO TTL different in prod vs dev
-    // const suffix = new Date(data.timestamp).toISOString();
     const suffix = data.timestamp.toString();
     const key = `R_${suffix}`;
     await this.storage.put(key, dataStr);
@@ -263,6 +301,50 @@ export class SyncChain {
         return false;
       }
     });
+  }
+
+  async markAsReadRest(data: ReadMarkMessage): Promise<Response> {
+    this.lastTimestamp = Math.max(Date.now(), this.lastTimestamp + 1);
+
+    const readMark = {
+      timestamp: this.lastTimestamp,
+      feedUrl: data.feedUrl,
+      articleGuid: data.articleGuid,
+    };
+
+    const suffix = readMark.timestamp;
+    const key = `R_${suffix}`;
+    await this.storage.put(key, JSON.stringify(readMark));
+
+    return new Response(JSON.stringify({ timestamp: readMark.timestamp }), {
+      status: 200,
+    });
+  }
+
+  async getReadRest(since: number): Promise<Response> {
+    // TODO pagination
+
+    const storage = await this.storage.list({
+      prefix: "R_",
+      start: `R_${since}`,
+    });
+
+    const marks: ReadMarkMessage[] = [];
+    for (const value of storage.values()) {
+      if (typeof value === "string") {
+        marks.push(JSON.parse(value));
+      }
+    }
+
+    return new Response(
+      JSON.stringify({ readMarks: marks }), 
+      { 
+        status: 200,
+        headers: { 
+          "Cache-Control": "private, max-age=60" 
+        },
+       }
+      );
   }
 
   async getRead(data: GetReadMessage, session: Session): Promise<void> {
@@ -305,8 +387,14 @@ type Session = {
 
 type ReadMarkMessage = {
   timestamp: number;
+  feedUrl: string;
+  articleGuid: string;
 };
 
 type GetReadMessage = {
   since: number;
+};
+
+type CreateResponse = {
+  id: string;
 };
