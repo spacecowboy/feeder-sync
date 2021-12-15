@@ -48,7 +48,7 @@ export default {
       switch (path[0]) {
         case "api":
           // This is a request for `/api/...`, call the API handler.
-          return handleApiRequest(path.slice(1), request, env);
+          return await handleApiRequest(path.slice(1), request, env);
 
         default:
           return new Response(`Not found: ${path[0]}`, { status: 404 });
@@ -61,7 +61,7 @@ async function handleApiRequest(
   path: string[],
   request: Request,
   env: EnvBinding
-) {
+): Promise<Response> {
   if (!path[0]) {
     return new Response("Missing path", { status: 404 });
   }
@@ -97,7 +97,7 @@ async function handleApiRequest(
       const newUrl = new URL(request.url);
       newUrl.pathname = "/" + path.join("/");
 
-      return syncChain.fetch(newUrl, request);
+      return await syncChain.fetch(newUrl, request);
     }
     case "connect": {
       if (request.method != "GET") {
@@ -122,7 +122,7 @@ async function handleApiRequest(
       const newUrl = new URL(request.url);
       newUrl.pathname = "/" + path.slice(1).join("/");
 
-      return syncChain.fetch(newUrl, request);
+      return await syncChain.fetch(newUrl, request);
     }
     default:
       return new Response(`Not found: ${path[0]}`, { status: 404 });
@@ -170,28 +170,28 @@ export class SyncChain {
               return new Response(null, { status: 405 });
           }
         }
-      //   case "/websocket": {
-      //     // A client is trying to establish a new WebSocket session.
-      //     if (request.headers.get("Upgrade") != "websocket") {
-      //       return new Response("expected websocket upgrade", { status: 400 });
-      //     }
+        //   case "/websocket": {
+        //     // A client is trying to establish a new WebSocket session.
+        //     if (request.headers.get("Upgrade") != "websocket") {
+        //       return new Response("expected websocket upgrade", { status: 400 });
+        //     }
 
-      //     // Get the client's IP address for use with the rate limiter.
-      //     const ip = request.headers.get("CF-Connecting-IP");
+        //     // Get the client's IP address for use with the rate limiter.
+        //     const ip = request.headers.get("CF-Connecting-IP");
 
-      //     // To accept the WebSocket request, we create a WebSocketPair (which is like a socketpair,
-      //     // i.e. two WebSockets that talk to each other), we return one end of the pair in the
-      //     // response, and we operate on the other end. Note that this API is not part of the
-      //     // Fetch API standard; unfortunately, the Fetch API / Service Workers specs do not define
-      //     // any way to act as a WebSocket server today.
-      //     const pair = new WebSocketPair();
+        //     // To accept the WebSocket request, we create a WebSocketPair (which is like a socketpair,
+        //     // i.e. two WebSockets that talk to each other), we return one end of the pair in the
+        //     // response, and we operate on the other end. Note that this API is not part of the
+        //     // Fetch API standard; unfortunately, the Fetch API / Service Workers specs do not define
+        //     // any way to act as a WebSocket server today.
+        //     const pair = new WebSocketPair();
 
-      //     // We're going to take pair[1] as our end, and return pair[0] to the client.
-      //     await this.handleSession(pair[1], ip);
+        //     // We're going to take pair[1] as our end, and return pair[0] to the client.
+        //     await this.handleSession(pair[1], ip);
 
-      //     // Now we return the other end of the pair to the client.
-      //     return new Response(null, { status: 101, webSocket: pair[0] });
-      //   }
+        //     // Now we return the other end of the pair to the client.
+        //     return new Response(null, { status: 101, webSocket: pair[0] });
+        //   }
         default:
           return new Response(`Not found: ${url.pathname}`, { status: 404 });
       }
@@ -336,15 +336,17 @@ export class SyncChain {
       }
     }
 
-    return new Response(
-      JSON.stringify({ readMarks: marks }), 
-      { 
-        status: 200,
-        headers: { 
-          "Cache-Control": "private, max-age=60" 
-        },
-       }
-      );
+    const headers = new Headers();
+    // Clients should cache empty responses - but not with content
+    if (marks.length == 0) {
+      headers.set("Cache-Control", "private, max-age=10");
+    } else {
+      headers.set("Cache-Control", "private, max-age=0");
+    }
+    return new Response(JSON.stringify({ readMarks: marks }), {
+      status: 200,
+      headers: headers,
+    });
   }
 
   async getRead(data: GetReadMessage, session: Session): Promise<void> {
