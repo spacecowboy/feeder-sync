@@ -303,20 +303,21 @@ export class SyncChain {
     });
   }
 
-  async markAsReadRest(data: ReadMarkMessage): Promise<Response> {
-    this.lastTimestamp = Math.max(Date.now(), this.lastTimestamp + 1);
+  async markAsReadRest(data: SendReadMarkBulkRequest): Promise<Response> {
+    for (const mark of data.items) {
+      this.lastTimestamp = Math.max(Date.now(), this.lastTimestamp + 1);
+      const readMark = {
+        timestamp: this.lastTimestamp,
+        feedUrl: mark.feedUrl,
+        articleGuid: mark.articleGuid,
+      };
 
-    const readMark = {
-      timestamp: this.lastTimestamp,
-      feedUrl: data.feedUrl,
-      articleGuid: data.articleGuid,
-    };
+      const suffix = readMark.timestamp;
+      const key = `R_${suffix}`;
+      await this.storage.put(key, JSON.stringify(readMark));
+    }
 
-    const suffix = readMark.timestamp;
-    const key = `R_${suffix}`;
-    await this.storage.put(key, JSON.stringify(readMark));
-
-    return new Response(JSON.stringify({ timestamp: readMark.timestamp }), {
+    return new Response(JSON.stringify({ timestamp: this.lastTimestamp }), {
       status: 200,
     });
   }
@@ -389,6 +390,15 @@ type Session = {
 
 type ReadMarkMessage = {
   timestamp: number;
+  feedUrl: string;
+  articleGuid: string;
+};
+
+type SendReadMarkBulkRequest = {
+  items: SendReadMarkRequest[];
+};
+
+type SendReadMarkRequest = {
   feedUrl: string;
   articleGuid: string;
 };
