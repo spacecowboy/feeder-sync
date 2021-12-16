@@ -161,9 +161,18 @@ export class SyncChain {
 
     this.readMarkKeys = [...stuff.keys()];
 
-    if (this.readMarkKeys.length > this.maxReadMarks) {
-      await this.storage.delete(this.readMarkKeys.slice(0, -this.maxReadMarks));
-      this.readMarkKeys = this.readMarkKeys.slice(-this.maxReadMarks);
+    await this.pruneStorage();
+  }
+
+  async pruneStorage(): Promise<void> {
+    while (this.readMarkKeys.length > this.maxReadMarks) {
+      // Delete limits to 128 keys max at a time
+      const itemsToDelete = Math.min(
+        128,
+        this.readMarkKeys.length - this.maxReadMarks
+      );
+      await this.storage.delete(this.readMarkKeys.slice(0, itemsToDelete));
+      this.readMarkKeys = this.readMarkKeys.slice(itemsToDelete);
     }
   }
 
@@ -219,10 +228,7 @@ export class SyncChain {
       this.readMarkKeys.push(key);
     }
 
-    if (this.readMarkKeys.length > this.maxReadMarks) {
-      await this.storage.delete(this.readMarkKeys.slice(0, -this.maxReadMarks));
-      this.readMarkKeys = this.readMarkKeys.slice(-this.maxReadMarks);
-    }
+    await this.pruneStorage();
 
     return new Response(JSON.stringify({ timestamp: this.lastTimestamp }), {
       status: 200,
