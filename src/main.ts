@@ -47,6 +47,7 @@ export default {
 
       switch (path[0]) {
         case "api":
+          // TODO version api
           // This is a request for `/api/...`, call the API handler.
           return await handleApiRequest(path.slice(1), request, env);
 
@@ -71,8 +72,12 @@ async function handleApiRequest(
       if (request.method != "POST") {
         return new Response("Method not allowed", { status: 405 });
       }
-      const result: CreateResponse = {
-        id: env.chains.newUniqueId().toString(),
+      // TODO register device in durable object itself - move logic inside
+      // Random 64 bit integer
+      const deviceId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+      const result: JoinResponse = {
+        syncCode: env.chains.newUniqueId().toString(),
+        deviceId: deviceId,
       };
       return new Response(JSON.stringify(result), {
         headers: { "Access-Control-Allow-Origin": "*" },
@@ -99,31 +104,6 @@ async function handleApiRequest(
 
       return await syncChain.fetch(newUrl, request);
     }
-    case "connect": {
-      if (request.method != "GET") {
-        return new Response("Method not allowed", { status: 405 });
-      }
-
-      const name = request.headers.get("X-FEEDER-ID");
-      if (!name) {
-        return new Response("Missing ID", { status: 400 });
-      }
-
-      let id;
-      if (name.match(/^[0-9a-f]{64}$/)) {
-        id = env.chains.idFromString(name);
-      } else {
-        return new Response("Invalid ID", { status: 400 });
-      }
-
-      const syncChain = env.chains.get(id);
-
-      // Forward rest of chain to the Durable Object
-      const newUrl = new URL(request.url);
-      newUrl.pathname = "/" + path.slice(1).join("/");
-
-      return await syncChain.fetch(newUrl, request);
-    }
     default:
       return new Response(`Not found: ${path[0]}`, { status: 404 });
   }
@@ -138,11 +118,14 @@ export class SyncChain {
   readMarkKeys: string[] = [];
   // Should be less than 1000
   maxReadMarks = 900;
+  deviceList: Map<number, string> = new Map();
+  syncCode: string | DurableObjectId;
 
   constructor(state: DurableObjectState, env: unknown) {
     this.storage = state.storage;
     this.env = env;
     this.sessions = [];
+    this.syncCode = state.id;
 
     // We keep track of the last-seen message's timestamp just so that we can assign monotonically
     // increasing timestamps even if multiple messages arrive simultaneously (see below). There's
@@ -155,6 +138,11 @@ export class SyncChain {
   }
 
   async _initialize(): Promise<void> {
+    const maybeDevices = await this.storage.get("deviceList");
+    if (maybeDevices) {
+      this.deviceList = maybeDevices as Map<number, string>;
+    }
+
     const stuff = await this.storage.list({
       // TODO version prefixes
       // TODO migrate to R1_ prefix - delete all R_
@@ -179,12 +167,23 @@ export class SyncChain {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const deviceIdString = request.headers.get("X-FEEDER-DEVICE-ID");
+    if (!deviceIdString) {
+      return new Response("Missing Device ID", { status: 400 });
+    }
+    const deviceId = parseInt(deviceIdString);
+
     // This only waits first time and all flows enter through here
     await this.initialization;
 
-    return await handleErrors(request, async () => {
-      const url = new URL(request.url);
+    const deviceRegistered = this.deviceList.has(deviceId);
+    const url = new URL(request.url);
 
+    if (!deviceRegistered && url.pathname !== "/join") {
+      return new Response("Device not registered", { status: 400 });
+    }
+
+    return await handleErrors(request, async () => {
       switch (url.pathname) {
         case "/readmark": {
           switch (request.method) {
@@ -203,6 +202,25 @@ export class SyncChain {
             default:
               return new Response(null, { status: 405 });
           }
+        }
+        case "/join": {
+          if (request.method != "POST") {
+            return new Response(null, { status: 405 });
+          }
+          const data = JSON.parse(await request.text()) as
+            | CreateRequest
+            | JoinRequest;
+          return await this.joinRest(data.deviceName);
+        }
+        case "/devices": {
+          if (request.method != "GET") {
+            return new Response(null, { status: 405 });
+          }
+          return await this.getDevicesRest();
+        }
+        case "/devices/ID": {
+          // TODO delete method on exact device
+          return new Response(`TODO`, { status: 500 });
         }
         default:
           return new Response(`Not found: ${url.pathname}`, { status: 404 });
@@ -255,6 +273,10 @@ export class SyncChain {
       }
     }
 
+    const response: GetReadResponse = {
+      readMarks: marks,
+    };
+
     const headers = new Headers();
     // Clients should cache empty responses - but not with content
     if (marks.length == 0) {
@@ -262,7 +284,57 @@ export class SyncChain {
     } else {
       headers.set("Cache-Control", "private, max-age=0");
     }
-    return new Response(JSON.stringify({ readMarks: marks }), {
+    return new Response(JSON.stringify(response), {
+      status: 200,
+      headers: headers,
+    });
+  }
+
+  async joinRest(deviceName: string): Promise<Response> {
+    const deviceId = await this.addDevice(deviceName);
+
+    const response: JoinResponse = {
+      syncCode: this.syncCode.toString(),
+      deviceId: deviceId,
+    };
+
+    return new Response(JSON.stringify(response), { status: 200 });
+  }
+
+  async addDevice(deviceName: string): Promise<number> {
+    // Random 64 bit integer
+    const deviceId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+
+    this.deviceList.set(deviceId, deviceName);
+    this.storage.put("deviceList", this.deviceList);
+
+    return deviceId;
+  }
+
+  async removeDevice(deviceId: number): Promise<number> {
+    this.deviceList.delete(deviceId);
+    this.storage.put("deviceList", this.deviceList);
+
+    return deviceId;
+  }
+
+  async getDevicesRest(): Promise<Response> {
+    const devices: DeviceMessage[] = [];
+    this.deviceList.forEach((value, key) => {
+      devices.push({
+        deviceId: key,
+        deviceName: value,
+      });
+    });
+
+    const response: DeviceListResponse = {
+      devices: devices,
+    };
+
+    const headers = new Headers();
+    headers.set("Cache-Control", "private, max-age=60");
+
+    return new Response(JSON.stringify(response), {
       status: 200,
       headers: headers,
     });
@@ -284,6 +356,10 @@ type ReadMarkMessage = {
   articleGuid: string;
 };
 
+type GetReadResponse = {
+  readMarks: ReadMarkMessage[];
+};
+
 type SendReadMarkBulkRequest = {
   items: SendReadMarkRequest[];
 };
@@ -293,10 +369,25 @@ type SendReadMarkRequest = {
   articleGuid: string;
 };
 
-type GetReadMessage = {
-  since: number;
+type CreateRequest = {
+  deviceName: string;
 };
 
-type CreateResponse = {
-  id: string;
+type JoinRequest = {
+  syncCode: string;
+  deviceName: string;
+};
+
+type JoinResponse = {
+  syncCode: string;
+  deviceId: number;
+};
+
+type DeviceMessage = {
+  deviceId: number;
+  deviceName: string;
+};
+
+type DeviceListResponse = {
+  devices: DeviceMessage[];
 };
