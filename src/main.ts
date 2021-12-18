@@ -156,6 +156,8 @@ export class SyncChain {
 
   async _initialize(): Promise<void> {
     const stuff = await this.storage.list({
+      // TODO version prefixes
+      // TODO migrate to R1_ prefix - delete all R_
       prefix: "R_",
     });
 
@@ -221,6 +223,8 @@ export class SyncChain {
         articleGuid: mark.articleGuid,
       };
 
+      // TODO version prefixes
+      // TODO migrate to R1_ prefix - delete all R_
       const suffix = readMark.timestamp;
       const key = `R_${suffix}`;
       await this.storage.put(key, JSON.stringify(readMark));
@@ -238,6 +242,8 @@ export class SyncChain {
   async getReadRest(since: number): Promise<Response> {
     // No need for pagination - it's sorta built in to the entire since parameter
     const storage = await this.storage.list({
+      // TODO version prefixes
+      // TODO migrate to R1_ prefix - delete all R_
       prefix: "R_",
       start: `R_${since}`,
     });
