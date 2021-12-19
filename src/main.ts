@@ -72,17 +72,17 @@ async function handleApiRequest(
       if (request.method != "POST") {
         return new Response("Method not allowed", { status: 405 });
       }
-      // TODO register device in durable object itself - move logic inside
-      // Random 64 bit integer
-      const deviceId = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
-      const result: JoinResponse = {
-        syncCode: env.chains.newUniqueId().toString(),
-        deviceId: deviceId,
-      };
-      return new Response(JSON.stringify(result), {
-        headers: { "Access-Control-Allow-Origin": "*" },
-      });
+      const chainId = env.chains.newUniqueId();
+      const syncChain = env.chains.get(chainId);
+
+      // Forward to the Durable Object
+      const newUrl = new URL(request.url);
+      newUrl.pathname = "/join";
+
+      return await syncChain.fetch(newUrl, request);
     }
+    case "join":
+    case "devices":
     case "readmark": {
       const name = request.headers.get("X-FEEDER-ID");
       if (!name) {
@@ -167,25 +167,29 @@ export class SyncChain {
   }
 
   async fetch(request: Request): Promise<Response> {
-    const deviceIdString = request.headers.get("X-FEEDER-DEVICE-ID");
-    if (!deviceIdString) {
-      return new Response("Missing Device ID", { status: 400 });
-    }
-    const deviceId = parseInt(deviceIdString);
+    const url = new URL(request.url);
+    const path = url.pathname.slice(1).split("/");
 
     // This only waits first time and all flows enter through here
     await this.initialization;
 
-    const deviceRegistered = this.deviceList.has(deviceId);
-    const url = new URL(request.url);
-
-    if (!deviceRegistered && url.pathname !== "/join") {
-      return new Response("Device not registered", { status: 400 });
+    const deviceIdString = request.headers.get("X-FEEDER-DEVICE-ID");
+    if (deviceIdString) {
+      const deviceId = parseInt(deviceIdString);
+      const deviceRegistered = this.deviceList.has(deviceId);
+      if (!deviceRegistered && url.pathname !== "/join") {
+        return new Response("Device not registered", { status: 400 });
+      }
+    } else if (url.pathname !== "/join") {
+      return new Response("Missing Device ID", { status: 400 });
     }
 
     return await handleErrors(request, async () => {
-      switch (url.pathname) {
-        case "/readmark": {
+      switch (path[0]) {
+        case "readmark": {
+          if (path[1]) {
+            return new Response(null, { status: 404 });
+          }
           switch (request.method) {
             case "GET": {
               // since query param
@@ -203,7 +207,11 @@ export class SyncChain {
               return new Response(null, { status: 405 });
           }
         }
-        case "/join": {
+        case "join": {
+          // Create also ends up here
+          if (path[1]) {
+            return new Response(`Not found: ${url.pathname}`, { status: 404 });
+          }
           if (request.method != "POST") {
             return new Response(null, { status: 405 });
           }
@@ -212,15 +220,28 @@ export class SyncChain {
             | JoinRequest;
           return await this.joinRest(data.deviceName);
         }
-        case "/devices": {
-          if (request.method != "GET") {
+        case "devices": {
+          if (!path[1]) {
+            if (request.method != "GET") {
+              return new Response(null, { status: 405 });
+            }
+            return await this.getDevicesRest(true);
+          }
+          if (path[2]) {
+            return new Response(`Not found: ${url.pathname}`, { status: 404 });
+          }
+          if (request.method != "DELETE") {
             return new Response(null, { status: 405 });
           }
-          return await this.getDevicesRest();
-        }
-        case "/devices/ID": {
-          // TODO delete method on exact device
-          return new Response(`TODO`, { status: 500 });
+          const deviceId = parseInt(path[1]);
+          const result = await this.removeDevice(deviceId);
+          if (result) {
+            return await this.getDevicesRest(false);
+          } else {
+            new Response(`No such device registered: ${deviceId}`, {
+              status: 404,
+            });
+          }
         }
         default:
           return new Response(`Not found: ${url.pathname}`, { status: 404 });
@@ -311,14 +332,13 @@ export class SyncChain {
     return deviceId;
   }
 
-  async removeDevice(deviceId: number): Promise<number> {
-    this.deviceList.delete(deviceId);
+  async removeDevice(deviceId: number): Promise<boolean> {
+    const result = this.deviceList.delete(deviceId);
     this.storage.put("deviceList", this.deviceList);
-
-    return deviceId;
+    return result;
   }
 
-  async getDevicesRest(): Promise<Response> {
+  async getDevicesRest(cacheHeaders: boolean): Promise<Response> {
     const devices: DeviceMessage[] = [];
     this.deviceList.forEach((value, key) => {
       devices.push({
@@ -332,8 +352,9 @@ export class SyncChain {
     };
 
     const headers = new Headers();
-    headers.set("Cache-Control", "private, max-age=60");
-
+    if (cacheHeaders) {
+      headers.set("Cache-Control", "private, max-age=60");
+    }
     return new Response(JSON.stringify(response), {
       status: 200,
       headers: headers,
