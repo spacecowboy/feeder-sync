@@ -395,7 +395,6 @@ type CreateRequest = {
 };
 
 type JoinRequest = {
-  syncCode: string;
   deviceName: string;
 };
 
