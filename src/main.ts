@@ -83,7 +83,8 @@ async function handleApiRequest(
     }
     case "join":
     case "devices":
-    case "readmark": {
+    case "readmark":
+    case "ereadmark": {
       const name = request.headers.get("X-FEEDER-ID");
       if (!name) {
         return new Response("Missing ID", { status: 400 });
@@ -207,6 +208,27 @@ export class SyncChain {
               return new Response(null, { status: 405 });
           }
         }
+        case "ereadmark": {
+          if (path[1]) {
+            return new Response(null, { status: 404 });
+          }
+          switch (request.method) {
+            case "GET": {
+              // since query param
+              const since = url.searchParams.get("since");
+              if (typeof since === "string") {
+                return await this.getEncryptedReadRest(parseInt(since));
+              }
+              return new Response(null, { status: 400 });
+            }
+            case "POST": {
+              const data = JSON.parse(await request.text());
+              return await this.markAsEncryptedReadRest(data);
+            }
+            default:
+              return new Response(null, { status: 405 });
+          }
+        }
         case "join": {
           // Create also ends up here
           if (path[1]) {
@@ -278,6 +300,36 @@ export class SyncChain {
     });
   }
 
+  async markAsEncryptedReadRest(
+    data: SendEncryptedReadMarkBulkRequest
+  ): Promise<Response> {
+    if (data.items.length > this.maxReadMarks) {
+      return new Response("U 2 phat", { status: 400 });
+    }
+
+    for (const mark of data.items) {
+      this.lastTimestamp = Math.max(Date.now(), this.lastTimestamp + 1);
+      const readMark: EncryptedReadMarkMessage = {
+        timestamp: this.lastTimestamp,
+        encrypted: mark.encrypted,
+      };
+
+      // TODO version prefixes
+      // TODO migrate to R1_ prefix - delete all R_
+      const suffix = readMark.timestamp;
+      const key = `R_${suffix}`;
+      await this.storage.put(key, JSON.stringify(readMark));
+      // And in-memory collection of keys
+      this.readMarkKeys.push(key);
+    }
+
+    await this.pruneStorage();
+
+    return new Response(JSON.stringify({ timestamp: this.lastTimestamp }), {
+      status: 200,
+    });
+  }
+
   async getReadRest(since: number): Promise<Response> {
     // No need for pagination - it's sorta built in to the entire since parameter
     const storage = await this.storage.list({
@@ -295,6 +347,39 @@ export class SyncChain {
     }
 
     const response: GetReadResponse = {
+      readMarks: marks,
+    };
+
+    const headers = new Headers();
+    // Clients should cache empty responses - but not with content
+    if (marks.length == 0) {
+      headers.set("Cache-Control", "private, max-age=10");
+    } else {
+      headers.set("Cache-Control", "private, max-age=0");
+    }
+    return new Response(JSON.stringify(response), {
+      status: 200,
+      headers: headers,
+    });
+  }
+
+  async getEncryptedReadRest(since: number): Promise<Response> {
+    // No need for pagination - it's sorta built in to the entire since parameter
+    const storage = await this.storage.list({
+      // TODO version prefixes
+      // TODO migrate to R1_ prefix - delete all R_
+      prefix: "R_",
+      start: `R_${since}`,
+    });
+
+    const marks: EncryptedReadMarkMessage[] = [];
+    for (const value of storage.values()) {
+      if (typeof value === "string") {
+        marks.push(JSON.parse(value));
+      }
+    }
+
+    const response: GetEncryptedReadResponse = {
       readMarks: marks,
     };
 
@@ -377,8 +462,17 @@ type ReadMarkMessage = {
   articleGuid: string;
 };
 
+type EncryptedReadMarkMessage = {
+  timestamp: number;
+  encrypted: string;
+};
+
 type GetReadResponse = {
   readMarks: ReadMarkMessage[];
+};
+
+type GetEncryptedReadResponse = {
+  readMarks: EncryptedReadMarkMessage[];
 };
 
 type SendReadMarkBulkRequest = {
@@ -388,6 +482,14 @@ type SendReadMarkBulkRequest = {
 type SendReadMarkRequest = {
   feedUrl: string;
   articleGuid: string;
+};
+
+type SendEncryptedReadMarkBulkRequest = {
+  items: SendEncryptedReadMarkRequest[];
+};
+
+type SendEncryptedReadMarkRequest = {
+  encrypted: string;
 };
 
 type CreateRequest = {
