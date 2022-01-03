@@ -122,14 +122,14 @@ export class SyncChain {
   maxReadMarks = 900;
   deviceList: Map<number, string> = new Map();
   syncCode: string | DurableObjectId;
-  feedsHash: string;
+  feedsHash: number;
 
   constructor(state: DurableObjectState, env: unknown) {
     this.storage = state.storage;
     this.env = env;
     this.sessions = [];
     this.syncCode = state.id;
-    this.feedsHash = "";
+    this.feedsHash = 0;
 
     // We keep track of the last-seen message's timestamp just so that we can assign monotonically
     // increasing timestamps even if multiple messages arrive simultaneously (see below). There's
@@ -284,17 +284,8 @@ export class SyncChain {
             }
             case "POST": {
               const etag = request.headers.get("If-Match");
-
-              if (!etag) {
-                return new Response("Missing If-Match header", { status: 428 });
-              }
-
-              if (etag !== "*" && this.feedsHash !== etag) {
-                return new Response("You're out of date", { status: 412 });
-              }
-
               const data = JSON.parse(await request.text());
-              return await this.updateFeeds(data);
+              return await this.updateFeeds(etag, data);
             }
             default:
               return new Response(null, { status: 405 });
@@ -485,7 +476,7 @@ export class SyncChain {
     const headers = new Headers();
     headers.set("Vary", "X-FEEDER-ID, X-FEEDER-DEVICE-ID");
 
-    if (etag && this.feedsHash === etag) {
+    if (etag && this.feedsHash === parseInt(etag)) {
       // Only Vary headers on 304
       return new Response(null, {
         status: 304,
@@ -494,9 +485,9 @@ export class SyncChain {
     }
 
     headers.set("Cache-Control", "private, must-revalidate");
-    headers.set("ETag", this.feedsHash);
+    headers.set("ETag", this.feedsHash.toString());
 
-    if (this.feedsHash.length === 0) {
+    if (this.feedsHash === 0) {
       return new Response(null, {
         status: 204,
         headers: headers,
@@ -518,18 +509,26 @@ export class SyncChain {
     });
   }
 
-  async updateFeeds(data: UpdateFeedsRequest): Promise<Response> {
-    const encoder = new TextEncoder();
-
-    const digest = await crypto.subtle.digest(
-      {
-        name: "SHA-256",
-      },
-      encoder.encode(data.encrypted)
-    );
+  async updateFeeds(
+    etag: string | null,
+    data: UpdateFeedsRequest
+  ): Promise<Response> {
+    if (etag) {
+      if (etag !== "*" && this.feedsHash != 0) {
+        const hash = parseInt(etag);
+        if (this.feedsHash !== hash) {
+          return new Response("You're out of date", { status: 412 });
+        }
+      }
+    } else {
+      if (this.feedsHash != 0) {
+        // Only require if-match if we have some data
+        return new Response("Missing If-Match header", { status: 428 });
+      }
+    }
 
     const feeds: GetFeedsResponse = {
-      hash: hex(digest),
+      hash: data.contentHash,
       encrypted: data.encrypted,
     };
 
@@ -633,14 +632,15 @@ type DeviceListResponse = {
 };
 
 type GetFeedsResponse = {
-  hash: string;
+  hash: number;
   encrypted: string;
 };
 
 type UpdateFeedsRequest = {
+  contentHash: number;
   encrypted: string;
 };
 
 type UpdateFeedsResponse = {
-  hash: string;
+  hash: number;
 };
