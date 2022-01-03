@@ -122,14 +122,14 @@ export class SyncChain {
   maxReadMarks = 900;
   deviceList: Map<number, string> = new Map();
   syncCode: string | DurableObjectId;
-  feedsHash: number;
+  currentFeedsETag: string;
 
   constructor(state: DurableObjectState, env: unknown) {
     this.storage = state.storage;
     this.env = env;
     this.sessions = [];
     this.syncCode = state.id;
-    this.feedsHash = 0;
+    this.currentFeedsETag = emptyETag;
 
     // We keep track of the last-seen message's timestamp just so that we can assign monotonically
     // increasing timestamps even if multiple messages arrive simultaneously (see below). There's
@@ -144,7 +144,7 @@ export class SyncChain {
   async _initialize(): Promise<void> {
     const maybeFeeds = await this.storage.get("feeds");
     if (maybeFeeds) {
-      this.feedsHash = (maybeFeeds as GetFeedsResponse).hash;
+      this.currentFeedsETag = etagValue((maybeFeeds as GetFeedsResponse).hash);
     }
 
     const maybeDevices = await this.storage.get("deviceList");
@@ -283,9 +283,9 @@ export class SyncChain {
               return await this.getFeeds(etag);
             }
             case "POST": {
-              const etag = request.headers.get("If-Match");
+              const ifMatchHash = request.headers.get("If-Match");
               const data = JSON.parse(await request.text());
-              return await this.updateFeeds(etag, data);
+              return await this.updateFeeds(ifMatchHash, data);
             }
             default:
               return new Response(null, { status: 405 });
@@ -472,11 +472,28 @@ export class SyncChain {
     });
   }
 
+  /**
+   *
+   * @param etagValue one of '*', 'W/"hash"', '"hash"'
+   */
+  matchesCurrentETag(etagValue: string): Boolean {
+    if (etagValue === "*") {
+      return true;
+    }
+
+    if (etagValue === this.currentFeedsETag) {
+      return true;
+    }
+
+    // No W/ prefix
+    return etagValue === this.currentFeedsETag.substring(2);
+  }
+
   async getFeeds(etag: string | null): Promise<Response> {
     const headers = new Headers();
     headers.set("Vary", "X-FEEDER-ID, X-FEEDER-DEVICE-ID");
 
-    if (etag && this.feedsHash === parseInt(etag)) {
+    if (etag && this.matchesCurrentETag(etag)) {
       // Only Vary headers on 304
       return new Response(null, {
         status: 304,
@@ -485,9 +502,9 @@ export class SyncChain {
     }
 
     headers.set("Cache-Control", "private, must-revalidate");
-    headers.set("ETag", this.feedsHash.toString());
+    headers.set("ETag", this.currentFeedsETag);
 
-    if (this.feedsHash === 0) {
+    if (this.currentFeedsETag === emptyETag) {
       return new Response(null, {
         status: 204,
         headers: headers,
@@ -514,14 +531,11 @@ export class SyncChain {
     data: UpdateFeedsRequest
   ): Promise<Response> {
     if (etag) {
-      if (etag !== "*" && this.feedsHash != 0) {
-        const hash = parseInt(etag);
-        if (this.feedsHash !== hash) {
-          return new Response("You're out of date", { status: 412 });
-        }
+      if (!this.matchesCurrentETag(etag)) {
+        return new Response("You're out of date", { status: 412 });
       }
     } else {
-      if (this.feedsHash != 0) {
+      if (this.currentFeedsETag !== emptyETag) {
         // Only require if-match if we have some data
         return new Response("Missing If-Match header", { status: 428 });
       }
@@ -533,7 +547,7 @@ export class SyncChain {
     };
 
     await this.storage.put("feeds", feeds);
-    this.feedsHash = feeds.hash;
+    this.currentFeedsETag = etagValue(feeds.hash);
 
     const response: UpdateFeedsResponse = {
       hash: feeds.hash,
@@ -644,3 +658,9 @@ type UpdateFeedsRequest = {
 type UpdateFeedsResponse = {
   hash: number;
 };
+
+const emptyETag: string = 'W/"0"';
+
+function etagValue(hash: number): string {
+  return `W/"${hash}"`;
+}
