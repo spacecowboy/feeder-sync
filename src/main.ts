@@ -84,7 +84,8 @@ async function handleApiRequest(
     case "join":
     case "devices":
     case "readmark":
-    case "ereadmark": {
+    case "ereadmark":
+    case "feeds": {
       const name = request.headers.get("X-FEEDER-ID");
       if (!name) {
         return new Response("Missing ID", { status: 400 });
@@ -121,12 +122,14 @@ export class SyncChain {
   maxReadMarks = 900;
   deviceList: Map<number, string> = new Map();
   syncCode: string | DurableObjectId;
+  feedsHash: string;
 
   constructor(state: DurableObjectState, env: unknown) {
     this.storage = state.storage;
     this.env = env;
     this.sessions = [];
     this.syncCode = state.id;
+    this.feedsHash = "";
 
     // We keep track of the last-seen message's timestamp just so that we can assign monotonically
     // increasing timestamps even if multiple messages arrive simultaneously (see below). There's
@@ -139,6 +142,11 @@ export class SyncChain {
   }
 
   async _initialize(): Promise<void> {
+    const maybeFeeds = await this.storage.get("feeds");
+    if (maybeFeeds) {
+      this.feedsHash = (maybeFeeds as GetFeedsResponse).hash;
+    }
+
     const maybeDevices = await this.storage.get("deviceList");
     if (maybeDevices) {
       this.deviceList = maybeDevices as Map<number, string>;
@@ -263,6 +271,33 @@ export class SyncChain {
             new Response(`No such device registered: ${deviceId}`, {
               status: 404,
             });
+          }
+        }
+        case "feeds": {
+          if (path[1]) {
+            return new Response(null, { status: 404 });
+          }
+          switch (request.method) {
+            case "GET": {
+              const etag = request.headers.get("If-None-Match");
+              return await this.getFeeds(etag);
+            }
+            case "POST": {
+              const etag = request.headers.get("If-Match");
+
+              if (!etag) {
+                return new Response("Missing If-Match header", { status: 428 });
+              }
+
+              if (etag !== "*" && this.feedsHash !== etag) {
+                return new Response("You're out of date", { status: 412 });
+              }
+
+              const data = JSON.parse(await request.text());
+              return await this.updateFeeds(data);
+            }
+            default:
+              return new Response(null, { status: 405 });
           }
         }
         default:
@@ -445,6 +480,89 @@ export class SyncChain {
       headers: headers,
     });
   }
+
+  async getFeeds(etag: string | null): Promise<Response> {
+    const headers = new Headers();
+    headers.set("Vary", "X-FEEDER-ID, X-FEEDER-DEVICE-ID");
+
+    if (etag && this.feedsHash === etag) {
+      // Only Vary headers on 304
+      return new Response(null, {
+        status: 304,
+        headers: headers,
+      });
+    }
+
+    headers.set("Cache-Control", "private, must-revalidate");
+    headers.set("ETag", this.feedsHash);
+
+    if (this.feedsHash.length === 0) {
+      return new Response(null, {
+        status: 204,
+        headers: headers,
+      });
+    }
+
+    const feeds = await this.storage.get("feeds");
+
+    if (!feeds) {
+      return new Response(null, {
+        status: 204,
+        headers: headers,
+      });
+    }
+
+    return new Response(JSON.stringify(feeds), {
+      status: 200,
+      headers: headers,
+    });
+  }
+
+  async updateFeeds(data: UpdateFeedsRequest): Promise<Response> {
+    const encoder = new TextEncoder();
+
+    const digest = await crypto.subtle.digest(
+      {
+        name: "SHA-256",
+      },
+      encoder.encode(data.encrypted)
+    );
+
+    const feeds: GetFeedsResponse = {
+      hash: hex(digest),
+      encrypted: data.encrypted,
+    };
+
+    await this.storage.put("feeds", feeds);
+    this.feedsHash = feeds.hash;
+
+    const response: UpdateFeedsResponse = {
+      hash: feeds.hash,
+    };
+
+    return new Response(JSON.stringify(response), {
+      status: 200,
+    });
+  }
+}
+
+// https://stackoverflow.com/questions/40031688/javascript-arraybuffer-to-hex
+const byteToHex: string[] = [];
+
+for (let n = 0; n <= 0xff; ++n) {
+  const hexOctet = n.toString(16).padStart(2, "0");
+  byteToHex.push(hexOctet);
+}
+
+function hex(arrayBuffer: ArrayBuffer): string {
+  const buff = new Uint8Array(arrayBuffer);
+  const hexOctets = []; // new Array(buff.length) is even faster (preallocates necessary array size), then use hexOctets[i] instead of .push()
+
+  for (let i = 0; i < buff.length; ++i) {
+    hexOctets.push(byteToHex[buff[i]]);
+  }
+
+  return hexOctets.join("");
 }
 
 type EnvBinding = {
@@ -512,4 +630,17 @@ type DeviceMessage = {
 
 type DeviceListResponse = {
   devices: DeviceMessage[];
+};
+
+type GetFeedsResponse = {
+  hash: string;
+  encrypted: string;
+};
+
+type UpdateFeedsRequest = {
+  encrypted: string;
+};
+
+type UpdateFeedsResponse = {
+  hash: string;
 };
