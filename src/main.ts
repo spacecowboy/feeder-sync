@@ -5,22 +5,9 @@ async function handleErrors(
   try {
     return await func();
   } catch (err) {
-    if (request.headers.get("Upgrade") == "websocket") {
-      const pair = new WebSocketPair();
-      pair[1].accept();
-      // @ts-ignore
-      pair[1].send(JSON.stringify({ type: "E", error: err.stack }));
-      pair[1].close(1011, "Uncaught exception");
-      return new Response(null, {
-        status: 101,
-        webSocket: pair[0],
-      });
-    } else {
-      // @ts-ignore
-      return new Response(JSON.stringify({ type: "E", error: err.stack }), {
-        status: 500,
-      });
-    }
+    return new Response(JSON.stringify({ type: "E", error: err }), {
+      status: 500,
+    });
   }
 }
 
@@ -51,7 +38,7 @@ export default {
           // This is a request for `/api/...`, call the API handler.
           return await handleApiRequest(path.slice(1), request, env);
         case ".well-known":
-          return handleWellKnownRequest(path.slice(1), request, env);
+          return handleWellKnownRequest(path.slice(1));
         default:
           return new Response(`Not found: ${path[0]}`, { status: 404 });
       }
@@ -59,11 +46,7 @@ export default {
   },
 };
 
-async function handleWellKnownRequest(
-  path: string[],
-  request: Request,
-  env: EnvBinding
-): Promise<Response> {
+async function handleWellKnownRequest(path: string[]): Promise<Response> {
   if (path.length == 1 && path[0] === "assetlinks.json") {
     // Copied from file in repo
     const jsonFile = `
@@ -538,7 +521,7 @@ export class SyncChain {
    *
    * @param etagValue one of '*', 'W/"hash"', '"hash"'
    */
-  matchesCurrentETag(etagValue: string): Boolean {
+  matchesCurrentETag(etagValue: string): boolean {
     if (etagValue === "*") {
       return true;
     }
@@ -619,25 +602,6 @@ export class SyncChain {
       status: 200,
     });
   }
-}
-
-// https://stackoverflow.com/questions/40031688/javascript-arraybuffer-to-hex
-const byteToHex: string[] = [];
-
-for (let n = 0; n <= 0xff; ++n) {
-  const hexOctet = n.toString(16).padStart(2, "0");
-  byteToHex.push(hexOctet);
-}
-
-function hex(arrayBuffer: ArrayBuffer): string {
-  const buff = new Uint8Array(arrayBuffer);
-  const hexOctets = []; // new Array(buff.length) is even faster (preallocates necessary array size), then use hexOctets[i] instead of .push()
-
-  for (let i = 0; i < buff.length; ++i) {
-    hexOctets.push(byteToHex[buff[i]]);
-  }
-
-  return hexOctets.join("");
 }
 
 type EnvBinding = {
@@ -721,7 +685,7 @@ type UpdateFeedsResponse = {
   hash: number;
 };
 
-const emptyETag: string = 'W/"0"';
+const emptyETag = 'W/"0"';
 
 function etagValue(hash: number): string {
   return `W/"${hash}"`;
