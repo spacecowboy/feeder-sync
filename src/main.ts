@@ -330,7 +330,7 @@ export class SyncChain {
           if (result) {
             return await this.getDevicesRest(false);
           } else {
-            new Response(`No such device registered: ${deviceId}`, {
+            return new Response(`No such device registered: ${deviceId}`, {
               status: 404,
             });
           }
