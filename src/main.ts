@@ -168,6 +168,8 @@ export class SyncChain {
   deviceList: Map<number, string> = new Map();
   syncCode: string | DurableObjectId;
   currentFeedsETag: string;
+  currentDevicesETagNumber: number;
+  currentReadETagNumber: number;
 
   constructor(state: DurableObjectState, env: unknown) {
     this.storage = state.storage;
@@ -175,6 +177,8 @@ export class SyncChain {
     this.sessions = [];
     this.syncCode = state.id;
     this.currentFeedsETag = emptyETag;
+    this.currentDevicesETagNumber = 0;
+    this.currentReadETagNumber = 0;
 
     // We keep track of the last-seen message's timestamp just so that we can assign monotonically
     // increasing timestamps even if multiple messages arrive simultaneously (see below). There's
@@ -248,8 +252,9 @@ export class SyncChain {
             case "GET": {
               // since query param
               const since = url.searchParams.get("since");
+              const etag = request.headers.get("If-None-Match");
               if (typeof since === "string") {
-                return await this.getReadRest(parseInt(since));
+                return await this.getReadRest(parseInt(since), etag);
               }
               return new Response(null, { status: 400 });
             }
@@ -269,8 +274,9 @@ export class SyncChain {
             case "GET": {
               // since query param
               const since = url.searchParams.get("since");
+              const etag = request.headers.get("If-None-Match");
               if (typeof since === "string") {
-                return await this.getEncryptedReadRest(parseInt(since));
+                return await this.getEncryptedReadRest(parseInt(since), etag);
               }
               return new Response(null, { status: 400 });
             }
@@ -300,7 +306,8 @@ export class SyncChain {
             if (request.method != "GET") {
               return new Response(null, { status: 405 });
             }
-            return await this.getDevicesRest(true);
+            const etag = request.headers.get("If-None-Match");
+            return await this.getDevicesRest(true, etag);
           }
           if (path[2]) {
             return new Response(`Not found: ${url.pathname}`, { status: 404 });
@@ -311,7 +318,7 @@ export class SyncChain {
           const deviceId = parseInt(path[1]);
           const result = await this.removeDevice(deviceId);
           if (result) {
-            return await this.getDevicesRest(false);
+            return await this.getDevicesRest(false, null);
           } else {
             return new Response(`No such device registered: ${deviceId}`, {
               status: 404,
@@ -366,6 +373,10 @@ export class SyncChain {
 
     await this.pruneStorage();
 
+    this.currentReadETagNumber = Math.floor(
+      Math.random() * Number.MAX_SAFE_INTEGER
+    );
+
     return new Response(JSON.stringify({ timestamp: this.lastTimestamp }), {
       status: 200,
     });
@@ -396,12 +407,22 @@ export class SyncChain {
 
     await this.pruneStorage();
 
+    this.currentReadETagNumber = Math.floor(
+      Math.random() * Number.MAX_SAFE_INTEGER
+    );
+
     return new Response(JSON.stringify({ timestamp: this.lastTimestamp }), {
       status: 200,
     });
   }
 
-  async getReadRest(since: number): Promise<Response> {
+  async getReadRest(since: number, etag: string | null): Promise<Response> {
+    if (
+      etag &&
+      this.matchesCurrentETag(etag, etagValue(this.currentReadETagNumber))
+    ) {
+      return new Response(null, { status: 304 });
+    }
     // No need for pagination - it's sorta built in to the entire since parameter
     const storage = await this.storage.list({
       // TODO version prefixes
@@ -422,19 +443,25 @@ export class SyncChain {
     };
 
     const headers = new Headers();
-    // Clients should cache empty responses - but not with content
-    if (marks.length == 0) {
-      headers.set("Cache-Control", "private, max-age=10");
-    } else {
-      headers.set("Cache-Control", "private, max-age=0");
-    }
+    headers.set("Cache-Control", "private, must-revalidate");
+    headers.set("ETag", etagValue(this.currentReadETagNumber));
+
     return new Response(JSON.stringify(response), {
       status: 200,
       headers: headers,
     });
   }
 
-  async getEncryptedReadRest(since: number): Promise<Response> {
+  async getEncryptedReadRest(
+    since: number,
+    etag: string | null
+  ): Promise<Response> {
+    if (
+      etag &&
+      this.matchesCurrentETag(etag, etagValue(this.currentReadETagNumber))
+    ) {
+      return new Response(null, { status: 304 });
+    }
     // No need for pagination - it's sorta built in to the entire since parameter
     const storage = await this.storage.list({
       // TODO version prefixes
@@ -455,12 +482,9 @@ export class SyncChain {
     };
 
     const headers = new Headers();
-    // Clients should cache empty responses - but not with content
-    if (marks.length == 0) {
-      headers.set("Cache-Control", "private, max-age=10");
-    } else {
-      headers.set("Cache-Control", "private, max-age=0");
-    }
+    headers.set("Cache-Control", "private, must-revalidate");
+    headers.set("ETag", etagValue(this.currentReadETagNumber));
+
     return new Response(JSON.stringify(response), {
       status: 200,
       headers: headers,
@@ -484,6 +508,9 @@ export class SyncChain {
 
     this.deviceList.set(deviceId, deviceName);
     this.storage.put("deviceList", this.deviceList);
+    this.currentDevicesETagNumber = Math.floor(
+      Math.random() * Number.MAX_SAFE_INTEGER
+    );
 
     return deviceId;
   }
@@ -491,10 +518,23 @@ export class SyncChain {
   async removeDevice(deviceId: number): Promise<boolean> {
     const result = this.deviceList.delete(deviceId);
     this.storage.put("deviceList", this.deviceList);
+    this.currentDevicesETagNumber = Math.floor(
+      Math.random() * Number.MAX_SAFE_INTEGER
+    );
     return result;
   }
 
-  async getDevicesRest(cacheHeaders: boolean): Promise<Response> {
+  async getDevicesRest(
+    cacheHeaders: boolean,
+    etag: string | null
+  ): Promise<Response> {
+    if (
+      etag &&
+      this.matchesCurrentETag(etag, etagValue(this.currentDevicesETagNumber))
+    ) {
+      return new Response(null, { status: 304 });
+    }
+
     const devices: DeviceMessage[] = [];
     this.deviceList.forEach((value, key) => {
       devices.push({
@@ -509,7 +549,8 @@ export class SyncChain {
 
     const headers = new Headers();
     if (cacheHeaders) {
-      headers.set("Cache-Control", "private, max-age=60");
+      headers.set("Cache-Control", "private, must-revalidate");
+      headers.set("ETag", etagValue(this.currentDevicesETagNumber));
     }
     return new Response(JSON.stringify(response), {
       status: 200,
@@ -521,31 +562,27 @@ export class SyncChain {
    *
    * @param etagValue one of '*', 'W/"hash"', '"hash"'
    */
-  matchesCurrentETag(etagValue: string): boolean {
+  matchesCurrentETag(etagValue: string, currentEtag: string): boolean {
     if (etagValue === "*") {
       return true;
     }
 
-    if (etagValue === this.currentFeedsETag) {
+    if (etagValue === currentEtag) {
       return true;
     }
 
     // No W/ prefix
-    return etagValue === this.currentFeedsETag.substring(2);
+    return etagValue === currentEtag.substring(2);
   }
 
   async getFeeds(etag: string | null): Promise<Response> {
-    const headers = new Headers();
-    headers.set("Vary", "X-FEEDER-ID, X-FEEDER-DEVICE-ID");
-
-    if (etag && this.matchesCurrentETag(etag)) {
-      // Only Vary headers on 304
+    if (etag && this.matchesCurrentETag(etag, this.currentFeedsETag)) {
       return new Response(null, {
         status: 304,
-        headers: headers,
       });
     }
 
+    const headers = new Headers();
     headers.set("Cache-Control", "private, must-revalidate");
     headers.set("ETag", this.currentFeedsETag);
 
@@ -576,7 +613,7 @@ export class SyncChain {
     data: UpdateFeedsRequest
   ): Promise<Response> {
     if (etag) {
-      if (!this.matchesCurrentETag(etag)) {
+      if (!this.matchesCurrentETag(etag, this.currentFeedsETag)) {
         return new Response("You're out of date", { status: 412 });
       }
     } else {
