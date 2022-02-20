@@ -214,9 +214,7 @@ export class SyncChain {
     }
 
     const stuff = await this.storage.list({
-      // TODO version prefixes
-      // TODO migrate to R1_ prefix - delete all R_
-      prefix: "R_",
+      prefix: "R1_",
     });
 
     this.readMarkKeys = [...stuff.keys()];
@@ -233,6 +231,18 @@ export class SyncChain {
       );
       await this.storage.delete(this.readMarkKeys.slice(0, itemsToDelete));
       this.readMarkKeys = this.readMarkKeys.slice(itemsToDelete);
+    }
+
+    // Temporary migration
+    const oldStuff = await this.storage.list({
+      prefix: "R_",
+    });
+    let oldReadMarkKeys = [...oldStuff.keys()];
+    while (oldReadMarkKeys.length > 0) {
+      // Delete limits to 128 keys max at a time
+      const itemsToDelete = Math.min(128, oldReadMarkKeys.length);
+      await this.storage.delete(oldReadMarkKeys.slice(0, itemsToDelete));
+      oldReadMarkKeys = oldReadMarkKeys.slice(itemsToDelete);
     }
   }
 
@@ -374,10 +384,8 @@ export class SyncChain {
         articleGuid: mark.articleGuid,
       };
 
-      // TODO version prefixes
-      // TODO migrate to R1_ prefix - delete all R_
       const suffix = readMark.timestamp;
-      const key = `R_${suffix}`;
+      const key = `R1_${suffix}`;
       await this.storage.put(key, JSON.stringify(readMark));
       // And in-memory collection of keys
       this.readMarkKeys.push(key);
@@ -408,10 +416,8 @@ export class SyncChain {
         encrypted: mark.encrypted,
       };
 
-      // TODO version prefixes
-      // TODO migrate to R1_ prefix - delete all R_
       const suffix = readMark.timestamp;
-      const key = `R_${suffix}`;
+      const key = `R1_${suffix}`;
       await this.storage.put(key, JSON.stringify(readMark));
       // And in-memory collection of keys
       this.readMarkKeys.push(key);
@@ -437,10 +443,8 @@ export class SyncChain {
     }
     // No need for pagination - it's sorta built in to the entire since parameter
     const storage = await this.storage.list({
-      // TODO version prefixes
-      // TODO migrate to R1_ prefix - delete all R_
-      prefix: "R_",
-      start: `R_${since}`,
+      prefix: "R1_",
+      start: `R1_${since}`,
     });
 
     const marks: ReadMarkMessage[] = [];
@@ -476,10 +480,8 @@ export class SyncChain {
     }
     // No need for pagination - it's sorta built in to the entire since parameter
     const storage = await this.storage.list({
-      // TODO version prefixes
-      // TODO migrate to R1_ prefix - delete all R_
-      prefix: "R_",
-      start: `R_${since}`,
+      prefix: "R1_",
+      start: `R1_${since}`,
     });
 
     const marks: EncryptedReadMarkMessage[] = [];
