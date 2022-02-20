@@ -111,6 +111,15 @@ async function handleApiV1Request(
   request: Request,
   env: EnvBinding
 ): Promise<Response> {
+  const userAndPass = basicAuthentication(request);
+  if (userAndPass == null) {
+    return new Response("Missing credentials", { status: 401 });
+  }
+
+  if (!verifyCredentials(userAndPass.user, userAndPass.pass)) {
+    return new Response("Not authorized", { status: 401 });
+  }
+
   if (!path[0]) {
     return new Response("Missing path", { status: 404 });
   }
@@ -729,4 +738,67 @@ const emptyETag = 'W/"0"';
 
 function etagValue(hash: number): string {
   return `W/"${hash}"`;
+}
+
+// Only used to prevent random bypassers from scanning the API surface
+const HARDCODED_USER = "feeder_user";
+const HARDCODED_PASSWORD = "feeder_secret_1234";
+
+function verifyCredentials(user: string, pass: string): boolean {
+  if (HARDCODED_USER !== user) {
+    return false;
+  }
+
+  if (HARDCODED_PASSWORD !== pass) {
+    return false;
+  }
+
+  return true;
+}
+
+type UserAndPassword = {
+  user: string;
+  pass: string;
+};
+
+/**
+ * Parse HTTP Basic Authorization value.
+ */
+function basicAuthentication(request: Request): UserAndPassword | null {
+  const authorization = request.headers.get("Authorization");
+
+  if (authorization == null) {
+    return null;
+  }
+
+  const [scheme, encoded] = authorization.split(" ");
+
+  // The Authorization header must start with Basic, followed by a space.
+  if (!encoded || scheme !== "Basic") {
+    return null;
+  }
+
+  // Decodes the base64 value and performs unicode normalization.
+  // @see https://datatracker.ietf.org/doc/html/rfc7613#section-3.3.2 (and #section-4.2.2)
+  // @see https://dev.mozilla.org/docs/Web/JavaScript/Reference/Global_Objects/String/normalize
+  const buffer = Uint8Array.from(atob(encoded), (character) =>
+    character.charCodeAt(0)
+  );
+  const decoded = new TextDecoder().decode(buffer).normalize();
+
+  // The username & password are split by the first colon.
+  //=> example: "username:password"
+  const index = decoded.indexOf(":");
+
+  // The user & password are split by the first colon and MUST NOT contain control characters.
+  // @see https://tools.ietf.org/html/rfc5234#appendix-B.1 (=> "CTL = %x00-1F / %x7F")
+  // eslint-disable-next-line no-control-regex
+  if (index === -1 || /[\0-\x1F\x7F]/.test(decoded)) {
+    return null;
+  }
+
+  return {
+    user: decoded.substring(0, index),
+    pass: decoded.substring(index + 1),
+  };
 }
