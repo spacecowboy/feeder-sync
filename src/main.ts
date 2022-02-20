@@ -34,9 +34,12 @@ export default {
 
       switch (path[0]) {
         case "api":
-          // TODO version api
-          // This is a request for `/api/...`, call the API handler.
-          return await handleApiRequest(path.slice(1), request, env);
+          switch (path[1]) {
+            case "v1":
+              return await handleApiV1Request(path.slice(2), request, env);
+            default:
+              return new Response(`Not found: ${path[0]}`, { status: 404 });
+          }
         case ".well-known":
           return handleWellKnownRequest(path.slice(1));
         default:
@@ -103,7 +106,7 @@ async function handleWellKnownRequest(path: string[]): Promise<Response> {
   return new Response(`Not found: ${path[0]}`, { status: 404 });
 }
 
-async function handleApiRequest(
+async function handleApiV1Request(
   path: string[],
   request: Request,
   env: EnvBinding
