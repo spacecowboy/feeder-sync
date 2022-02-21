@@ -13,12 +13,6 @@ dir = "dist"
 main = "./main.mjs"
 rules = []
 
-#[secrets]
-## Set by wrangler secret put
-#ACCOUNT_ID
-#TOKEN
-#NAMESPACE_ID
-
 [triggers]
 # First day of the month at 12:00
 crons = [

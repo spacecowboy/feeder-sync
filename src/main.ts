@@ -57,13 +57,24 @@ export default {
 };
 
 async function handleCronEvent(env: EnvBinding): Promise<void> {
-  const allSyncChains = await getAllSyncChains(env);
-  for (const meta of allSyncChains) {
-    const id = env.chains.idFromString(meta.id);
-    const syncChain: DurableObjectStub = env.chains.get(id);
+  let cursor = "";
 
-    await syncChain.fetch("https://cron/self_destruct_if_old");
-  }
+  do {
+    const allSyncChains = await getAllSyncChains(env, cursor);
+
+    if (!allSyncChains.success) {
+      throw "Failed to get all sync chains";
+    }
+
+    cursor = allSyncChains.result_info.cursor;
+
+    for (const meta of allSyncChains.result) {
+      const id = env.chains.idFromString(meta.id);
+      const syncChain: DurableObjectStub = env.chains.get(id);
+
+      await syncChain.fetch("https://cron/self_destruct_if_old");
+    }
+  } while (cursor.length > 0);
 
   return;
 }
@@ -79,11 +90,11 @@ async function isLatestReadMarkOlderThan90Days(
   return millisSinceLastUse > ninetyDays;
 }
 
-// TODO pagination
 async function getAllSyncChains(
-  env: EnvBinding
-): Promise<CloudflareObjectListResponseResult[]> {
-  const url = `https://api.cloudflare.com/client/v4/accounts/${env.ACCOUNT_ID}/workers/durable_objects/namespaces/${env.NAMESPACE_ID}/objects`;
+  env: EnvBinding,
+  cursor: string
+): Promise<CloudflareObjectListResponse> {
+  const url = `https://api.cloudflare.com/client/v4/accounts/${env.ACCOUNT_ID}/workers/durable_objects/namespaces/${env.NAMESPACE_ID}/objects?cursor=${cursor}`;
 
   const init = {
     headers: {
@@ -95,7 +106,7 @@ async function getAllSyncChains(
   const response = await fetch(url, init);
   const jsonResponse: CloudflareObjectListResponse = await response.json();
 
-  return jsonResponse.result;
+  return jsonResponse;
 }
 
 async function handleWellKnownRequest(path: string[]): Promise<Response> {
@@ -883,4 +894,11 @@ type CloudflareObjectListResponseResult = {
 
 type CloudflareObjectListResponse = {
   result: CloudflareObjectListResponseResult[];
+  success: boolean;
+  //errors: any[];
+  //messages: any[];
+  result_info: {
+    count: number;
+    cursor: string;
+  };
 };
