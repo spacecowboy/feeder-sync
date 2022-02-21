@@ -290,7 +290,7 @@ export class SyncChain {
 
     if (shouldBeDeleted) {
       // Once the object shuts down after this it will cease to exist
-      this.storage.deleteAll();
+      await this.storage.deleteAll();
     }
   }
 
