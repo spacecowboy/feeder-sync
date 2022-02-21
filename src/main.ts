@@ -47,7 +47,56 @@ export default {
       }
     });
   },
+  async scheduled(
+    event: ScheduledEvent,
+    env: EnvBinding,
+    ctx: ExecutionContext
+  ): Promise<void> {
+    ctx.waitUntil(handleCronEvent(env));
+  },
 };
+
+async function handleCronEvent(env: EnvBinding): Promise<void> {
+  const allSyncChains = await getAllSyncChains(env);
+  for (const meta of allSyncChains) {
+    const id = env.chains.idFromString(meta.id);
+    const syncChain: DurableObjectStub = env.chains.get(id);
+
+    await syncChain.fetch("https://cron/self_destruct_if_old");
+  }
+
+  return;
+}
+
+async function isLatestReadMarkOlderThan90Days(
+  readMarkKeys: string[]
+): Promise<boolean> {
+  // Remove R1_ prefix
+  const lastTimestamp = readMarkKeys[readMarkKeys.length - 1].substring(3);
+  // Calculate age of that last timestamp until now
+  const millisSinceLastUse = Date.now() - parseInt(lastTimestamp);
+  const ninetyDays = 1000 * 60 * 60 * 24 * 90;
+  return millisSinceLastUse > ninetyDays;
+}
+
+// TODO pagination
+async function getAllSyncChains(
+  env: EnvBinding
+): Promise<CloudflareObjectListResponseResult[]> {
+  const url = `https://api.cloudflare.com/client/v4/accounts/${env.ACCOUNT_ID}/workers/durable_objects/namespaces/${env.NAMESPACE_ID}/objects`;
+
+  const init = {
+    headers: {
+      Authorization: `Bearer ${env.TOKEN}`,
+      "Content-Type": "application/json",
+    },
+  };
+
+  const response = await fetch(url, init);
+  const jsonResponse: CloudflareObjectListResponse = await response.json();
+
+  return jsonResponse.result;
+}
 
 async function handleWellKnownRequest(path: string[]): Promise<Response> {
   if (path.length == 1 && path[0] === "assetlinks.json") {
@@ -136,7 +185,7 @@ async function handleApiV1Request(
       const newUrl = new URL(request.url);
       newUrl.pathname = "/join";
 
-      return await syncChain.fetch(newUrl, request);
+      return await syncChain.fetch(`${newUrl}`, request);
     }
     case "join":
     case "devices":
@@ -161,7 +210,7 @@ async function handleApiV1Request(
       const newUrl = new URL(request.url);
       newUrl.pathname = "/" + path.join("/");
 
-      return await syncChain.fetch(newUrl, request);
+      return await syncChain.fetch(`${newUrl}`, request);
     }
     default:
       return new Response(`Not found: ${path[0]}`, { status: 404 });
@@ -222,6 +271,18 @@ export class SyncChain {
     await this.pruneStorage();
   }
 
+  async selfDestructIfOldOrEmpty(): Promise<void> {
+    const shouldBeDeleted =
+      this.deviceList.size === 0 ||
+      this.readMarkKeys.length === 0 ||
+      isLatestReadMarkOlderThan90Days(this.readMarkKeys);
+
+    if (shouldBeDeleted) {
+      // Once the object shuts down after this it will cease to exist
+      this.storage.deleteAll();
+    }
+  }
+
   async pruneStorage(): Promise<void> {
     while (this.readMarkKeys.length > this.maxReadMarks) {
       // Delete limits to 128 keys max at a time
@@ -248,6 +309,13 @@ export class SyncChain {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+
+    // Special case
+    if (url.pathname === "cron/self_destruct_if_old") {
+      await this.selfDestructIfOldOrEmpty();
+      return new Response(null, { status: 200 });
+    }
+
     const path = url.pathname.slice(1).split("/");
 
     // This only waits first time and all flows enter through here
@@ -656,7 +724,10 @@ export class SyncChain {
 }
 
 type EnvBinding = {
-  chains: any;
+  chains: DurableObjectNamespace;
+  ACCOUNT_ID: string;
+  TOKEN: string;
+  NAMESPACE_ID: string;
 };
 
 type Session = {
@@ -804,3 +875,12 @@ function basicAuthentication(request: Request): UserAndPassword | null {
     pass: decoded.substring(index + 1),
   };
 }
+
+type CloudflareObjectListResponseResult = {
+  hasStoredData: boolean;
+  id: string;
+};
+
+type CloudflareObjectListResponse = {
+  result: CloudflareObjectListResponseResult[];
+};
