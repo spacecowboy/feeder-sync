@@ -16,6 +16,7 @@ rules = []
 [triggers]
 # First day of the month at 12:00
 crons = [
+    "0 5 * * *",
     "0 12 1 * *"
 ]
 
