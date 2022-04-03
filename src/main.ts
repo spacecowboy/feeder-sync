@@ -28,6 +28,7 @@ export default {
 
       if (!path[0]) {
         return new Response("You are in the wrong place", {
+          status: 404,
           headers: { "Content-Type": "text/html;charset=UTF-8" },
         });
       }
