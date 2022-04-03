@@ -216,13 +216,18 @@ async function handleApiV1Request(
         return new Response("Invalid ID", { status: 400 });
       }
 
-      const syncChain = env.chains.get(id);
+      try {
+        const syncChain = env.chains.get(id);
 
-      // Forward to the Durable Object
-      const newUrl = new URL(request.url);
-      newUrl.pathname = "/" + path.join("/");
+        // Forward to the Durable Object
+        const newUrl = new URL(request.url);
+        newUrl.pathname = "/" + path.join("/");
 
-      return await syncChain.fetch(`${newUrl}`, request);
+        return await syncChain.fetch(`${newUrl}`, request);
+      } catch (e) {
+        console.log(e);
+        return new Response(`No such chain`, { status: 404 });
+      }
     }
     default:
       return new Response(`Not found: ${path[0]}`, { status: 404 });
