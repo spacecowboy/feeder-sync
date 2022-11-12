@@ -38,6 +38,8 @@ export default {
           switch (path[1]) {
             case "v1":
               return await handleApiV1Request(path.slice(2), request, env);
+            case "admin":
+              return await handleApiAdminRequest(path.slice(2), request, env);
             default:
               return new Response(`Not found: ${path[0]}`, { status: 404 });
           }
@@ -73,16 +75,143 @@ async function handleCronEvent(env: EnvBinding): Promise<void> {
       const id = env.chains.idFromString(meta.id);
       const syncChain: DurableObjectStub = env.chains.get(id);
 
-      await syncChain.fetch("https://cron/self_destruct_if_old");
+      await syncChain.fetch("https://host/cron/self_destruct_if_old");
     }
   } while (cursor.length > 0);
 
   return;
 }
 
-async function isLatestReadMarkOlderThan90Days(
+async function countChains(env: EnvBinding): Promise<Response> {
+  let cursor = "";
+  let total_count = 0;
+
+  do {
+    const allSyncChains = await getAllSyncChains(env, cursor);
+
+    if (!allSyncChains.success) {
+      throw "Failed to get all sync chains";
+    }
+
+    total_count += allSyncChains.result_info.count;
+
+    cursor = allSyncChains.result_info.cursor;
+  } while (cursor.length > 0);
+
+  const json_result = `
+  {
+    "count": ${total_count}
+  }
+  `
+
+  return new Response(json_result, {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+async function countDevices(env: EnvBinding): Promise<Response> {
+  let cursor = "";
+  let chain_count = 0;
+  let total_devices = 0;
+  let zero_count = 0;
+  let one_count = 0;
+  let two_count = 0;
+  let three_count = 0;
+  let four_count = 0;
+  let eligible_for_delete_count = 0;
+
+  let error_break = false;
+  let e = ""
+
+  do {
+    const allSyncChains = await getAllSyncChains(env, cursor);
+
+    if (!allSyncChains.success) {
+      throw "Failed to get all sync chains";
+    }
+
+    chain_count += allSyncChains.result_info.count;
+
+    cursor = allSyncChains.result_info.cursor;
+
+    for (const meta of allSyncChains.result) {
+      try {
+        const id = env.chains.idFromString(meta.id);
+        const syncChain: DurableObjectStub = env.chains.get(id);
+
+        const response: Response = await syncChain.fetch("https://host/admin/count_devices");
+        const result = JSON.parse(await response.text())
+        const device_count: number = result["device_count"]
+        const eligible_for_delete: boolean = result["eligible_for_delete"]
+        if (eligible_for_delete) {
+          eligible_for_delete_count++;
+        }
+        total_devices += device_count;
+        switch (device_count) {
+          case 0: {
+            zero_count++;
+          }
+          break
+          case 1: {
+            one_count++;
+          }
+          break
+          case 2: {
+            two_count++;
+          }
+          break
+          case 3: {
+            three_count++
+          }
+          break
+          case 4: {
+            four_count++;
+          }
+        }
+      } catch (err) {
+        e = `${err}`
+        error_break = true
+        break
+      }
+    }
+  } while (cursor.length > 0 && !error_break);
+
+  const json_result = `
+  {
+    "e": "${e}",
+    "eligible_for_delete_count": ${eligible_for_delete_count},
+    "chain_count": ${chain_count},
+    "total_devices": ${total_devices},
+    "zero_count": ${zero_count},
+    "one_count": ${one_count},
+    "two_count": ${two_count},
+    "three_count": ${three_count},
+    "four_count": ${four_count}
+  }
+  `
+
+  return new Response(json_result, {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function isChainOlderThan90Days(
+  creationTime: number
+): boolean {
+  // Calculate age until now
+  const millisSinceCreation = Date.now() - creationTime;
+  const ninetyDays = 1000 * 60 * 60 * 24 * 90;
+  return millisSinceCreation > ninetyDays;
+}
+
+function isLatestReadMarkOlderThan90Days(
   readMarkKeys: string[]
-): Promise<boolean> {
+): boolean {
+  if (readMarkKeys.length === 0) {
+    return true;
+  }
   // Remove R1_ prefix
   const lastTimestamp = readMarkKeys[readMarkKeys.length - 1].substring(3);
   // Calculate age of that last timestamp until now
@@ -167,6 +296,36 @@ async function handleWellKnownRequest(path: string[]): Promise<Response> {
   return new Response(`Not found: ${path[0]}`, { status: 404 });
 }
 
+async function handleApiAdminRequest(
+  path: string[],
+  request: Request,
+  env: EnvBinding
+): Promise<Response> {
+  const admin_key = request.headers.get("X-ADMIN-KEY");
+  if (admin_key !== env.ADMIN_KEY) {
+    return new Response("Bad admin key", { status: 403 });
+  }
+  
+  if (!path[0]) {
+    return new Response("Missing path", { status: 404 });
+  }
+
+  switch (path[0]) {
+    case "count_chains": {
+      return await countChains(env);
+    }
+    case "count_devices": {
+      return await countDevices(env);
+    }
+    case "self_destruct_if_old": {
+      await handleCronEvent(env);
+      return new Response("OK", { status: 200 });
+    }
+    default:
+      return new Response(`Not found: ${path[0]}`, { status: 404 });
+  }
+}
+
 async function handleApiV1Request(
   path: string[],
   request: Request,
@@ -248,6 +407,7 @@ export class SyncChain {
   currentFeedsETag: string;
   currentDevicesETagNumber: number;
   currentReadETagNumber: number;
+  creationTime: number;
 
   constructor(state: DurableObjectState, env: unknown) {
     this.storage = state.storage;
@@ -257,6 +417,7 @@ export class SyncChain {
     this.currentFeedsETag = emptyETag;
     this.currentDevicesETagNumber = 0;
     this.currentReadETagNumber = 0;
+    this.creationTime = 0;
 
     // We keep track of the last-seen message's timestamp just so that we can assign monotonically
     // increasing timestamps even if multiple messages arrive simultaneously (see below). There's
@@ -269,6 +430,13 @@ export class SyncChain {
   }
 
   async _initialize(): Promise<void> {
+    const maybeCreationTime = await this.storage.get("creationTime")
+    if (maybeCreationTime) {
+      this.creationTime = (maybeCreationTime as number);
+    } else {
+      this.creationTime = Date.now();
+      await this.storage.put("creationTime", this.creationTime);
+    }
     const maybeFeeds = await this.storage.get("feeds");
     if (maybeFeeds) {
       this.currentFeedsETag = etagValue((maybeFeeds as GetFeedsResponse).hash);
@@ -288,11 +456,19 @@ export class SyncChain {
     await this.pruneStorage();
   }
 
-  async selfDestructIfOldOrEmpty(): Promise<void> {
+  eligigleForDeletion(): boolean {
     const shouldBeDeleted =
-      this.deviceList.size === 0 ||
-      this.readMarkKeys.length === 0 ||
-      isLatestReadMarkOlderThan90Days(this.readMarkKeys);
+      this.deviceList.size === 0
+      || (
+        isChainOlderThan90Days(this.creationTime)
+        && isLatestReadMarkOlderThan90Days(this.readMarkKeys)
+      );
+
+      return shouldBeDeleted;
+  }
+
+  async selfDestructIfOldOrEmpty(): Promise<void> {
+    const shouldBeDeleted = this.eligigleForDeletion();
 
     if (shouldBeDeleted) {
       // Once the object shuts down after this it will cease to exist
@@ -310,28 +486,10 @@ export class SyncChain {
       await this.storage.delete(this.readMarkKeys.slice(0, itemsToDelete));
       this.readMarkKeys = this.readMarkKeys.slice(itemsToDelete);
     }
-
-    // Temporary migration
-    const oldStuff = await this.storage.list({
-      prefix: "R_",
-    });
-    let oldReadMarkKeys = [...oldStuff.keys()];
-    while (oldReadMarkKeys.length > 0) {
-      // Delete limits to 128 keys max at a time
-      const itemsToDelete = Math.min(128, oldReadMarkKeys.length);
-      await this.storage.delete(oldReadMarkKeys.slice(0, itemsToDelete));
-      oldReadMarkKeys = oldReadMarkKeys.slice(itemsToDelete);
-    }
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-
-    // Special case
-    if (url.pathname === "cron/self_destruct_if_old") {
-      await this.selfDestructIfOldOrEmpty();
-      return new Response(null, { status: 200 });
-    }
 
     const path = url.pathname.slice(1).split("/");
 
@@ -342,18 +500,43 @@ export class SyncChain {
     if (deviceIdString) {
       const deviceId = parseInt(deviceIdString);
       const deviceRegistered = this.deviceList.has(deviceId);
-      if (!deviceRegistered && url.pathname !== "/join") {
+      if (!deviceRegistered && url.pathname !== "/join" && !url.pathname.startsWith("/admin") && !url.pathname.startsWith("/cron")) {
         return new Response("Device not registered", { status: 400 });
       }
-    } else if (url.pathname !== "/join") {
+    } else if (url.pathname !== "/join" && !url.pathname.startsWith("/admin") && !url.pathname.startsWith("/cron")) {
       return new Response("Missing Device ID", { status: 400 });
     }
 
     return await handleErrors(request, async () => {
       switch (path[0]) {
+        case "cron": {
+          switch (path[1]) {
+            case "self_destruct_if_old": {
+              await this.selfDestructIfOldOrEmpty();
+              return new Response(null, { status: 200 });
+            }
+            default: {
+              return new Response(`Unknown cron endpoint: ${path[1]}`, { status: 404 });
+            }
+          }
+        }
+        case "admin": {
+          switch (path[1]) {
+            case "count_devices": {
+              return await this.getDeviceCount();
+            }
+            default: {
+              return new Response(`Unknown admin endpoint: ${path[1]}`, { status: 404 });
+            }
+          }
+        }
         case "readmark": {
           if (path[1]) {
             return new Response(null, { status: 404 });
+          }
+          if (this.deviceList.size < 2) {
+            await this.selfDestructIfOldOrEmpty();
+            return new Response("Add more devices first", { status: 418 })
           }
           switch (request.method) {
             case "GET": {
@@ -376,6 +559,10 @@ export class SyncChain {
         case "ereadmark": {
           if (path[1]) {
             return new Response(null, { status: 404 });
+          }
+          if (this.deviceList.size < 2) {
+            await this.selfDestructIfOldOrEmpty();
+            return new Response("Add more devices first", { status: 418 })
           }
           switch (request.method) {
             case "GET": {
@@ -435,6 +622,10 @@ export class SyncChain {
         case "feeds": {
           if (path[1]) {
             return new Response(null, { status: 404 });
+          }
+          if (this.deviceList.size < 2) {
+            await this.selfDestructIfOldOrEmpty();
+            return new Response("Add more devices first", { status: 418 })
           }
           switch (request.method) {
             case "GET": {
@@ -623,6 +814,19 @@ export class SyncChain {
     return result;
   }
 
+  async getDeviceCount(): Promise<Response> {
+    const data = `
+    {
+      "device_count": ${this.deviceList.size},
+      "eligible_for_delete": ${this.eligigleForDeletion()}
+    }
+    `
+    return new Response(data, {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   async getDevicesRest(
     cacheHeaders: boolean,
     etag: string | null
@@ -745,6 +949,7 @@ type EnvBinding = {
   ACCOUNT_ID: string;
   TOKEN: string;
   NAMESPACE_ID: string;
+  ADMIN_KEY: string;
 };
 
 type Session = {
@@ -822,6 +1027,10 @@ type UpdateFeedsRequest = {
 
 type UpdateFeedsResponse = {
   hash: number;
+};
+
+type ChainCreationTime = {
+  timestamp: number;
 };
 
 const emptyETag = 'W/"0"';

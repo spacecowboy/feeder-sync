@@ -4,3 +4,4 @@ transpiled
 /.idea/
 core
 target
+.admin-secret
