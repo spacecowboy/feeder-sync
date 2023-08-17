@@ -15,16 +15,12 @@ func TestJoinSyncChain(t *testing.T) {
 	// TODO UserId and DeviceId
 	// TODO 401 auth
 	t.Run("Joining returns a new UserId and DeviceId", func(t *testing.T) {
-		request, _ := http.NewRequest(http.MethodPost, "/api/v1/create", nil)
+		request := newCreateRequest(t)
 		responseFirst := httptest.NewRecorder()
 
 		FeederServer(responseFirst, request)
 
-		var gotFirst UserDevice
-
-		if err := json.Unmarshal(responseFirst.Body.Bytes(), &gotFirst); err != nil {
-			t.Fatalf("Unable to parse response %q into UserDevice, '%v", responseFirst.Body, err)
-		}
+		var gotFirst UserDevice = parseCreateResponse(t, responseFirst)
 
 		if gotFirst.UserId == uuid.Nil {
 			t.Errorf("UserId was nil: %q", gotFirst.UserId)
@@ -43,11 +39,7 @@ func TestJoinSyncChain(t *testing.T) {
 		// Run again to generate another user
 		FeederServer(response, request)
 
-		var gotSecond UserDevice
-
-		if err := json.Unmarshal(response.Body.Bytes(), &gotSecond); err != nil {
-			t.Fatalf("Unable to parse response %q into UserDevice, '%v", response.Body, err)
-		}
+		var gotSecond UserDevice = parseCreateResponse(t, response)
 
 		if gotSecond.UserId == uuid.Nil {
 			t.Errorf("UserId was nil: %q", gotSecond.UserId)
@@ -65,4 +57,19 @@ func TestJoinSyncChain(t *testing.T) {
 			t.Errorf("got %q should be different from %q", gotFirst.UserId, gotSecond.UserId)
 		}
 	})
+}
+
+func newCreateRequest(t testing.TB) *http.Request {
+	request, _ := http.NewRequest(http.MethodPost, "/api/v1/create", nil)
+	return request
+}
+
+func parseCreateResponse(t testing.TB, response *httptest.ResponseRecorder) UserDevice {
+	var got UserDevice
+
+	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+		t.Fatalf("Unable to parse response %q into UserDevice, '%v", response.Body, err)
+	}
+
+	return got
 }

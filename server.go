@@ -9,13 +9,17 @@ import (
 )
 
 func FeederServer(w http.ResponseWriter, r *http.Request) {
-	userDevice := UserDevice{
-		UserId:   uuid.New(),
-		DeviceId: uuid.New(),
-	}
+	userDevice := RegisterNewUser()
 
 	response, _ := json.Marshal(userDevice)
 	fmt.Fprint(w, string(response))
+}
+
+func RegisterNewUser() UserDevice {
+	return UserDevice{
+		UserId:   uuid.New(),
+		DeviceId: uuid.New(),
+	}
 }
 
 type UserDevice struct {
