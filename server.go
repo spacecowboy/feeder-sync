@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -81,47 +80,6 @@ func (s *FeederServer) handleJoin(w http.ResponseWriter, r *http.Request) {
 type DataStore interface {
 	RegisterNewUser(deviceName string) (UserDevice, error)
 	AddDeviceToChain(userId uuid.UUID, deviceName string) (UserDevice, error)
-}
-
-type InMemoryStore struct {
-	userDevices map[uuid.UUID][]UserDevice
-}
-
-func (s InMemoryStore) RegisterNewUser(deviceName string) (UserDevice, error) {
-	userId := uuid.New()
-	var devices []UserDevice
-	devices = make([]UserDevice, 2)
-
-	device := UserDevice{
-		UserId:     userId,
-		DeviceId:   uuid.New(),
-		DeviceName: deviceName,
-	}
-
-	devices = append(devices, device)
-	s.userDevices[userId] = devices
-
-	return device, nil
-}
-
-func (s InMemoryStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (UserDevice, error) {
-	var devices []UserDevice
-	devices = s.userDevices[userId]
-
-	if devices == nil {
-		return UserDevice{}, errors.New("No such user")
-	}
-
-	device := UserDevice{
-		UserId:     userId,
-		DeviceId:   uuid.New(),
-		DeviceName: deviceName,
-	}
-
-	devices = append(devices, device)
-	s.userDevices[userId] = devices
-
-	return device, nil
 }
 
 type UserDevice struct {

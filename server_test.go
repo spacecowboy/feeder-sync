@@ -80,6 +80,23 @@ func TestJoinSyncChain(t *testing.T) {
 
 func TestCreateSyncChain(t *testing.T) {
 	// TODO 401 auth
+	t.Run("When create fails then 500", func(t *testing.T) {
+		request := newCreateRequest(t, "device1")
+		responseFirst := httptest.NewRecorder()
+
+		server := FeederServer{
+			store: ExplodingStore{},
+		}
+		server.ServeHTTP(responseFirst, request)
+
+		gotCode1 := responseFirst.Code
+		wantCode1 := 500
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
 	t.Run("Creating returns a new UserId and DeviceId", func(t *testing.T) {
 		request := newCreateRequest(t, "device1")
 		responseFirst := httptest.NewRecorder()
@@ -268,4 +285,55 @@ func newJoinChainRequest(t *testing.T, userId uuid.UUID, deviceName string) *htt
 	jsonBody, _ := json.Marshal(jsonRequest)
 	result, _ := http.NewRequest(http.MethodPost, "/api/v1/join", bytes.NewReader(jsonBody))
 	return result
+}
+
+type InMemoryStore struct {
+	userDevices map[uuid.UUID][]UserDevice
+}
+
+func (s InMemoryStore) RegisterNewUser(deviceName string) (UserDevice, error) {
+	userId := uuid.New()
+	var devices []UserDevice
+	devices = make([]UserDevice, 2)
+
+	device := UserDevice{
+		UserId:     userId,
+		DeviceId:   uuid.New(),
+		DeviceName: deviceName,
+	}
+
+	devices = append(devices, device)
+	s.userDevices[userId] = devices
+
+	return device, nil
+}
+
+func (s InMemoryStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (UserDevice, error) {
+	var devices []UserDevice
+	devices = s.userDevices[userId]
+
+	if devices == nil {
+		return UserDevice{}, errors.New("No such user")
+	}
+
+	device := UserDevice{
+		UserId:     userId,
+		DeviceId:   uuid.New(),
+		DeviceName: deviceName,
+	}
+
+	devices = append(devices, device)
+	s.userDevices[userId] = devices
+
+	return device, nil
+}
+
+type ExplodingStore struct{}
+
+func (s ExplodingStore) RegisterNewUser(deviceName string) (UserDevice, error) {
+	return UserDevice{}, errors.New("BOOM")
+}
+
+func (s ExplodingStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (UserDevice, error) {
+	return UserDevice{}, errors.New("BOOM")
 }
