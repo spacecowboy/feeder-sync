@@ -6,6 +6,6 @@ import (
 )
 
 func main() {
-	handler := http.HandlerFunc(FeederServer)
-	log.Fatal(http.ListenAndServe(":5000", handler))
+	server := FeederServer{}
+	log.Fatal(http.ListenAndServe(":5000", &server))
 }
