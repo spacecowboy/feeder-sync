@@ -11,7 +11,6 @@ type FeederServer struct {
 	store DataStore
 }
 
-// server.go
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	router := http.NewServeMux()
@@ -70,7 +69,6 @@ func (s *FeederServer) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// http.Error(w, "No such chain", http.StatusNotFound)
 	if err := json.NewEncoder(w).Encode(userDevice); err != nil {
 		http.Error(w, "Could not encode UserDevice", http.StatusInternalServerError)
 		return
