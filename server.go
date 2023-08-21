@@ -217,24 +217,16 @@ type MigrateRequestV2 struct {
 }
 
 type UserDeviceResponseV2 struct {
-	UserId     uuid.UUID
-	DeviceId   uuid.UUID
-	DeviceName string
+	UserId     uuid.UUID `json:"userId"`
+	DeviceId   uuid.UUID `json:"deviceId"`
+	DeviceName string    `json:"deviceName"`
 }
 
 type CreateChainRequestV2 struct {
-	DeviceName string
-
-	// Used during migration
-	// LegacyUserId   string
-	// LegacyDeviceId int64
+	DeviceName string `json:"deviceName"`
 }
 
 type JoinChainRequestV2 struct {
-	UserId     uuid.UUID
-	DeviceName string
-
-	// Used during migration
-	// LegacyUserId   string
-	// LegacyDeviceId int64
+	UserId     uuid.UUID `json:"userId"`
+	DeviceName string    `json:"deviceName"`
 }
