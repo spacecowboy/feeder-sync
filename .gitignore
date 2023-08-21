@@ -5,3 +5,4 @@ transpiled
 core
 target
 .admin-secret
+feeder-sync
