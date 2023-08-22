@@ -4,11 +4,33 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/spacecowboy/feeder-sync/internal/store"
+	"github.com/spacecowboy/feeder-sync/internal/store/sqlite"
+
 	"github.com/google/uuid"
 )
 
 type FeederServer struct {
-	store DataStore
+	store store.DataStore
+}
+
+func NewServer() (FeederServer, error) {
+	store, err := sqlite.New("./sqlite.db")
+	if err != nil {
+		return FeederServer{}, err
+	}
+
+	if err := store.RunMigrations("file://./migrations"); err != nil {
+		return FeederServer{}, err
+	}
+
+	return FeederServer{
+		store: store,
+	}, nil
+}
+
+func (s *FeederServer) Close() error {
+	return s.store.Close()
 }
 
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -167,23 +189,6 @@ func (s *FeederServer) handleJoinV2(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Could not encode UserDevice", http.StatusInternalServerError)
 		return
 	}
-}
-
-type DataStore interface {
-	RegisterNewUser(deviceName string) (UserDevice, error)
-	AddDeviceToChain(userId uuid.UUID, deviceName string) (UserDevice, error)
-	AddDeviceToChainWithLegacy(syncCode string, deviceName string) (UserDevice, error)
-	EnsureMigration(syncCode string, deviceId int64, deviceName string) error
-}
-
-type UserDevice struct {
-	UserId     uuid.UUID
-	DeviceId   uuid.UUID
-	DeviceName string
-
-	// Migration fields
-	LegacyUserId   string
-	LegacyDeviceId int64
 }
 
 type CreateChainRequestV1 struct {

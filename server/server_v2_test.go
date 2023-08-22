@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/spacecowboy/feeder-sync/internal/store"
+
 	"github.com/google/uuid"
 )
 
@@ -18,7 +20,7 @@ func TestMigrateV2(t *testing.T) {
 		response := httptest.NewRecorder()
 
 		store := InMemoryStore{
-			userDevices: make(map[string][]UserDevice),
+			userDevices: make(map[string][]store.UserDevice),
 			calls:       make(map[string]int),
 		}
 		server := &FeederServer{
@@ -264,7 +266,7 @@ func TestCreateSyncChainV2(t *testing.T) {
 func newFeederServer() *FeederServer {
 	return &FeederServer{
 		store: InMemoryStore{
-			userDevices: make(map[string][]UserDevice),
+			userDevices: make(map[string][]store.UserDevice),
 			calls:       make(map[string]int),
 		},
 	}
@@ -345,88 +347,4 @@ func newMigrateRequestV2(t *testing.T, syncCode string, deviceId int64, deviceNa
 	jsonBody, _ := json.Marshal(jsonRequest)
 	result, _ := http.NewRequest(http.MethodPost, "/api/v2/migrate", bytes.NewReader(jsonBody))
 	return result
-}
-
-type InMemoryStore struct {
-	calls       map[string]int
-	userDevices map[string][]UserDevice
-}
-
-func (s InMemoryStore) RegisterNewUser(deviceName string) (UserDevice, error) {
-	userId := uuid.New()
-	devices := make([]UserDevice, 2)
-
-	device := UserDevice{
-		UserId:         userId,
-		DeviceId:       uuid.New(),
-		DeviceName:     deviceName,
-		LegacyUserId:   userId.String(),
-		LegacyDeviceId: 5, //rand.Int63(),
-	}
-
-	devices = append(devices, device)
-	s.userDevices[userId.String()] = devices
-
-	return device, nil
-}
-
-func (s InMemoryStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (UserDevice, error) {
-	devices := s.userDevices[userId.String()]
-
-	if devices == nil {
-		return UserDevice{}, errors.New("No such user")
-	}
-
-	device := UserDevice{
-		UserId:     userId,
-		DeviceId:   uuid.New(),
-		DeviceName: deviceName,
-	}
-
-	devices = append(devices, device)
-	s.userDevices[userId.String()] = devices
-
-	return device, nil
-}
-
-func (s InMemoryStore) AddDeviceToChainWithLegacy(syncCode string, deviceName string) (UserDevice, error) {
-	devices := s.userDevices[syncCode]
-
-	if devices == nil {
-		return UserDevice{}, errors.New("No such user")
-	}
-
-	device := UserDevice{
-		UserId:     devices[0].UserId,
-		DeviceId:   uuid.New(),
-		DeviceName: deviceName,
-	}
-
-	devices = append(devices, device)
-	s.userDevices[syncCode] = devices
-
-	return device, nil
-}
-
-func (s InMemoryStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) error {
-	s.calls["EnsureMigration"] = 1 + s.calls["EnsureMigration"]
-	return nil
-}
-
-type ExplodingStore struct{}
-
-func (s ExplodingStore) RegisterNewUser(deviceName string) (UserDevice, error) {
-	return UserDevice{}, errors.New("BOOM")
-}
-
-func (s ExplodingStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (UserDevice, error) {
-	return UserDevice{}, errors.New("BOOM")
-}
-
-func (s ExplodingStore) AddDeviceToChainWithLegacy(syncCode string, deviceName string) (UserDevice, error) {
-	return UserDevice{}, errors.New("BOOM")
-}
-
-func (s ExplodingStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) error {
-	return errors.New("BOOM")
 }
