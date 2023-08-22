@@ -16,6 +16,7 @@ type UserDevice struct {
 	UserId     uuid.UUID
 	DeviceId   uuid.UUID
 	DeviceName string
+	// LastSeen
 
 	// Migration fields
 	LegacySyncCode string
