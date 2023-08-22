@@ -21,7 +21,7 @@ func (s InMemoryStore) RegisterNewUser(deviceName string) (store.UserDevice, err
 		UserId:         userId,
 		DeviceId:       uuid.New(),
 		DeviceName:     deviceName,
-		LegacyUserId:   userId.String(),
+		LegacySyncCode: userId.String(),
 		LegacyDeviceId: 5, //rand.Int63(),
 	}
 

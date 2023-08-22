@@ -18,6 +18,6 @@ type UserDevice struct {
 	DeviceName string
 
 	// Migration fields
-	LegacyUserId   string
+	LegacySyncCode string
 	LegacyDeviceId int64
 }

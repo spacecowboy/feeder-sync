@@ -86,7 +86,7 @@ func (s *FeederServer) handleCreateV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := JoinChainResponseV1{
-		SyncCode: userDevice.LegacyUserId,
+		SyncCode: userDevice.LegacySyncCode,
 		DeviceId: userDevice.LegacyDeviceId,
 	}
 
@@ -151,7 +151,7 @@ func (s *FeederServer) handleJoinV1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := JoinChainResponseV1{
-		SyncCode: userDevice.LegacyUserId,
+		SyncCode: userDevice.LegacySyncCode,
 		DeviceId: userDevice.LegacyDeviceId,
 	}
 
