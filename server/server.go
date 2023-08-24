@@ -58,7 +58,8 @@ func (s *FeederServer) handleMigrateV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.EnsureMigration(migrateRequest.SyncCode, migrateRequest.DeviceId, migrateRequest.DeviceName); err != nil {
+	_, err := s.store.EnsureMigration(migrateRequest.SyncCode, migrateRequest.DeviceId, migrateRequest.DeviceName)
+	if err != nil {
 		http.Error(w, "Badness", http.StatusInternalServerError)
 		return
 	}

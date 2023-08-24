@@ -73,9 +73,9 @@ func (s InMemoryStore) Close() error {
 	return nil
 }
 
-func (s InMemoryStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) error {
+func (s InMemoryStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error) {
 	s.calls["EnsureMigration"] = 1 + s.calls["EnsureMigration"]
-	return nil
+	return 0, nil
 }
 
 type ExplodingStore struct{}
@@ -92,8 +92,8 @@ func (s ExplodingStore) AddDeviceToChainWithLegacy(syncCode string, deviceName s
 	return store.UserDevice{}, errors.New("BOOM")
 }
 
-func (s ExplodingStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) error {
-	return errors.New("BOOM")
+func (s ExplodingStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error) {
+	return 0, errors.New("BOOM")
 }
 
 func (s ExplodingStore) Close() error {

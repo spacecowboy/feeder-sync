@@ -3,6 +3,9 @@ package sqlite
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/sqlite"
@@ -57,6 +60,63 @@ func (s SqliteStore) AddDeviceToChainWithLegacy(syncCode string, deviceName stri
 	return store.UserDevice{}, errors.New("TODO")
 }
 
-func (s SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) error {
-	return errors.New("TODO")
+func (s SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error) {
+	if len(syncCode) != 64 {
+		return 0, fmt.Errorf("Not a 64 char synccode: %q", syncCode)
+	}
+
+	var userCount int64
+	var deviceCount int64
+	var userDbId int64
+
+	userDbId = -1
+
+	// Insert user
+	result, err := s.db.Exec("INSERT INTO users (user_id, legacy_sync_code) VALUES (?, ?)", uuid.New(), syncCode)
+	if err != nil {
+		if !strings.Contains(err.Error(), "constraint failed: users.legacy_sync_code") {
+			return userCount + deviceCount, fmt.Errorf("insert user: %v", err)
+		}
+
+		row := s.db.QueryRow("SELECT db_id FROM users WHERE legacy_sync_code = ?", syncCode)
+		if err := row.Scan(&userDbId); err != nil {
+			if err == sql.ErrNoRows {
+				return userCount + deviceCount, fmt.Errorf("no user with syncCode %q", syncCode)
+			}
+			return userCount + deviceCount, fmt.Errorf("could not find user: %v", err)
+		}
+	} else {
+		userCount, err = result.RowsAffected()
+		if err != nil {
+			return userCount + deviceCount, fmt.Errorf("insert user2: %v", err)
+		}
+		userDbId, err = result.LastInsertId()
+		if err != nil {
+			return userCount + deviceCount, fmt.Errorf("insert user2: %v", err)
+		}
+	}
+
+	// Insert device
+
+	result, err = s.db.Exec(
+		"INSERT INTO devices (device_id, legacy_device_id, device_name, last_seen, user_db_id) VALUES (?, ?, ?, ?, ?)",
+		uuid.New(),
+		deviceId,
+		deviceName,
+		time.Now().UnixMilli(),
+		userDbId,
+	)
+
+	if err != nil {
+		if !strings.Contains(err.Error(), "constraint failed: devices.user_db_id, devices.legacy_device_id") {
+			return userCount + deviceCount, fmt.Errorf("insert user: %v", err)
+		}
+	} else {
+		deviceCount, err = result.RowsAffected()
+		if err != nil {
+			return userCount + deviceCount, fmt.Errorf("insert user2: %v", err)
+		}
+	}
+
+	return userCount + deviceCount, nil
 }
