@@ -69,8 +69,6 @@ func (s SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceName
 	var deviceCount int64
 	var userDbId int64
 
-	userDbId = -1
-
 	// Insert user
 	result, err := s.db.Exec("INSERT INTO users (user_id, legacy_sync_code) VALUES (?, ?)", uuid.New(), syncCode)
 	if err != nil {
@@ -97,7 +95,6 @@ func (s SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceName
 	}
 
 	// Insert device
-
 	result, err = s.db.Exec(
 		"INSERT INTO devices (device_id, legacy_device_id, device_name, last_seen, user_db_id) VALUES (?, ?, ?, ?, ?)",
 		uuid.New(),
