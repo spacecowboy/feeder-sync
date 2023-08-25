@@ -45,7 +45,11 @@ func (s SqliteStore) RunMigrations(path string) error {
 		return err
 	}
 
-	return m.Up()
+	if err := m.Up(); err != migrate.ErrNoChange {
+		return err
+	}
+
+	return nil
 }
 
 func (s SqliteStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
