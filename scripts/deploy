@@ -1,0 +1,22 @@
+#!/bin/bash -eu
+
+USER="root"
+HOST="172.104.137.77"
+BINARY_DIR="/var/local/feeder-sync"
+BINARY_NAME="webserver"
+STATE_DIR="/var/lib/feeder-sync"
+
+ssh "$USER@$HOST" systemctl stop feeder-sync.service || echo Feeder-sync not installed yet
+ssh "$USER@$HOST" mkdir -p "$BINARY_DIR"
+ssh "$USER@$HOST" mkdir -p "$STATE_DIR"
+
+scp "out/$BINARY_NAME" "$USER@$HOST:$BINARY_DIR"
+rsync -vzr --progress host-files/ "$USER@$HOST:/"
+scp -r "migrations" "$USER@$HOST:$STATE_DIR"
+
+ssh "$USER@$HOST" chown -R feeder:feeder "$STATE_DIR"
+
+ssh "$USER@$HOST" systemctl daemon-reload
+ssh "$USER@$HOST" systemctl enable feeder-sync.service
+ssh "$USER@$HOST" systemctl start feeder-sync.service
+ssh "$USER@$HOST" systemctl reload caddy

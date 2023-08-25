@@ -1,0 +1,16 @@
+[Unit]
+Description=Feeder-sync server
+After=network.target
+
+[Service]
+ExecStart=/var/local/feeder-sync/webserver
+Restart=on-failure
+# This is created (if not already exists) under /var/lib and chowned on create
+StateDirectory=feeder-sync feeder-sync/migrations
+WorkingDirectory=/var/lib/feeder-sync
+User=feeder
+Group=feeder
+
+[Install]
+WantedBy=multi-user.target
+Alias=feeder.service

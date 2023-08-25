@@ -13,6 +13,10 @@ build: out
 test:
 	go test -v -race -buildvcs ./...
 
+.PHONY: deploy
+deploy: build
+	scripts/deploy
+
 .PHONY: clean
 clean:
 	rm -rf out
