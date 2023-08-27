@@ -81,9 +81,9 @@ func TestCreateSyncChainV1(t *testing.T) {
 		request := newCreateRequestV1(t, "device1")
 		responseFirst := httptest.NewRecorder()
 
-		server := FeederServer{
-			store: ExplodingStore{},
-		}
+		server, _ := NewServerWithStore(
+			ExplodingStore{},
+		)
 		server.ServeHTTP(responseFirst, request)
 
 		gotCode1 := responseFirst.Code

@@ -11,7 +11,8 @@ import (
 )
 
 type FeederServer struct {
-	store store.DataStore
+	store  store.DataStore
+	router *http.ServeMux
 }
 
 func NewServer() (FeederServer, error) {
@@ -24,9 +25,22 @@ func NewServer() (FeederServer, error) {
 		return FeederServer{}, err
 	}
 
-	return FeederServer{
-		store: store,
-	}, nil
+	return NewServerWithStore(store)
+}
+
+func NewServerWithStore(store store.DataStore) (FeederServer, error) {
+	server := FeederServer{
+		store:  store,
+		router: http.NewServeMux(),
+	}
+
+	server.router.Handle("/api/v2/migrate", http.HandlerFunc(server.handleMigrateV2))
+	server.router.Handle("/api/v1/create", http.HandlerFunc(server.handleCreateV1))
+	server.router.Handle("/api/v2/create", http.HandlerFunc(server.handleCreateV2))
+	server.router.Handle("/api/v1/join", http.HandlerFunc(server.handleJoinV1))
+	server.router.Handle("/api/v2/join", http.HandlerFunc(server.handleJoinV2))
+
+	return server, nil
 }
 
 func (s *FeederServer) Close() error {
@@ -34,15 +48,7 @@ func (s *FeederServer) Close() error {
 }
 
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-	router := http.NewServeMux()
-	router.Handle("/api/v2/migrate", http.HandlerFunc(s.handleMigrateV2))
-	router.Handle("/api/v1/create", http.HandlerFunc(s.handleCreateV1))
-	router.Handle("/api/v2/create", http.HandlerFunc(s.handleCreateV2))
-	router.Handle("/api/v1/join", http.HandlerFunc(s.handleJoinV1))
-	router.Handle("/api/v2/join", http.HandlerFunc(s.handleJoinV2))
-
-	router.ServeHTTP(w, r)
+	s.router.ServeHTTP(w, r)
 }
 
 func (s *FeederServer) handleMigrateV2(w http.ResponseWriter, r *http.Request) {

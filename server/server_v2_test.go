@@ -30,9 +30,9 @@ func TestMigrateV2(t *testing.T) {
 			userDevices: make(map[string][]store.UserDevice),
 			calls:       make(map[string]int),
 		}
-		server := &FeederServer{
-			store: store,
-		}
+		server, _ := NewServerWithStore(
+			store,
+		)
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -60,9 +60,9 @@ func TestMigrateV2(t *testing.T) {
 			userDevices: make(map[string][]store.UserDevice),
 			calls:       make(map[string]int),
 		}
-		server := &FeederServer{
-			store: store,
-		}
+		server, _ := NewServerWithStore(
+			store,
+		)
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -82,9 +82,9 @@ func TestMigrateV2(t *testing.T) {
 			userDevices: make(map[string][]store.UserDevice),
 			calls:       make(map[string]int),
 		}
-		server := &FeederServer{
-			store: store,
-		}
+		server, _ := NewServerWithStore(
+			store,
+		)
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -174,9 +174,9 @@ func TestCreateSyncChainV2(t *testing.T) {
 		request := newCreateRequestV2(t, "device1", "", 0)
 		responseFirst := httptest.NewRecorder()
 
-		server := FeederServer{
-			store: ExplodingStore{},
-		}
+		server, _ := NewServerWithStore(
+			ExplodingStore{},
+		)
 		server.ServeHTTP(responseFirst, request)
 
 		gotCode1 := responseFirst.Code
@@ -323,12 +323,14 @@ func TestCreateSyncChainV2(t *testing.T) {
 }
 
 func newFeederServer() *FeederServer {
-	return &FeederServer{
-		store: InMemoryStore{
+	server, _ := NewServerWithStore(
+		InMemoryStore{
 			userDevices: make(map[string][]store.UserDevice),
 			calls:       make(map[string]int),
 		},
-	}
+	)
+
+	return &server
 }
 
 type BadResponseWriter struct {
