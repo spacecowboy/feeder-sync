@@ -385,7 +385,7 @@ async function handleApiV1Request(
         const realResponse = await syncChain.fetch(`${newUrl}`, request);
 
         try {
-          if (realResponse.ok) {
+          if (realResponse.ok || realResponse.status == 304) {
             const response = realResponse.clone()
             // JONAS if success
             const fump: DeviceListResponse = JSON.parse(await response.text())
@@ -863,11 +863,13 @@ export class SyncChain {
     cacheHeaders: boolean,
     etag: string | null
   ): Promise<Response> {
+    var code = 200
     if (
       etag &&
       this.matchesCurrentETag(etag, etagValue(this.currentDevicesETagNumber))
     ) {
-      return new Response(null, { status: 304 });
+      code = 304
+      //return new Response(null, { status: 304 });
     }
 
     const devices: DeviceMessage[] = [];
@@ -888,7 +890,7 @@ export class SyncChain {
       headers.set("ETag", etagValue(this.currentDevicesETagNumber));
     }
     return new Response(JSON.stringify(response), {
-      status: 200,
+      status: code,
       headers: headers,
     });
   }
