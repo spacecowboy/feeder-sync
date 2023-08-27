@@ -382,18 +382,19 @@ async function handleApiV1Request(
         const newUrl = new URL(request.url);
         newUrl.pathname = "/" + path.join("/");
 
-        const response = await syncChain.fetch(`${newUrl}`, request);
+        const realResponse = await syncChain.fetch(`${newUrl}`, request);
 
         try {
-          if (response.ok) {
+          if (realResponse.ok) {
+            const response = realResponse.clone()
             // JONAS if success
             const fump: DeviceListResponse = JSON.parse(await response.text())
             // const deviceId = parseInt(request.headers.get("X-FEEDER-DEVICE-ID"));
-            const url = "https://dev.nononsenseapps.com//api/v2/migrate";
+            const url = "https://dev.nononsenseapps.com/api/v2/migrate";
 
             for (const device of fump.devices) {
               const body: MigrateRequestV2 = {
-                syncCode: id,
+                syncCode: name,
                 deviceId: device.deviceId,
                 deviceName: device.deviceName,
               };
@@ -406,13 +407,14 @@ async function handleApiV1Request(
                 },
               };
               // Don't care about result
+              console.log("Migrating JONAS")
               await fetch(url, init);
             }
           }
         } catch (e) {
           console.log(e)
         }
-        return response
+        return realResponse
       } catch (e) {
         console.log(e);
         return new Response(`No such chain`, { status: 404 });
