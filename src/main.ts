@@ -152,19 +152,19 @@ async function countDevices(env: EnvBinding): Promise<Response> {
           case 0: {
             zero_count++;
           }
-          break
+            break
           case 1: {
             one_count++;
           }
-          break
+            break
           case 2: {
             two_count++;
           }
-          break
+            break
           case 3: {
             three_count++
           }
-          break
+            break
           case 4: {
             four_count++;
           }
@@ -285,7 +285,7 @@ async function handleWellKnownRequest(path: string[]): Promise<Response> {
           ]
         }
       }
-    ]    
+    ]
     `;
     return new Response(jsonFile, {
       status: 200,
@@ -305,7 +305,7 @@ async function handleApiAdminRequest(
   if (admin_key !== env.ADMIN_KEY) {
     return new Response("Bad admin key", { status: 403 });
   }
-  
+
   if (!path[0]) {
     return new Response("Missing path", { status: 404 });
   }
@@ -382,7 +382,37 @@ async function handleApiV1Request(
         const newUrl = new URL(request.url);
         newUrl.pathname = "/" + path.join("/");
 
-        return await syncChain.fetch(`${newUrl}`, request);
+        const response = await syncChain.fetch(`${newUrl}`, request);
+
+        try {
+          if (response.ok) {
+            // JONAS if success
+            const fump: DeviceListResponse = JSON.parse(await response.text())
+            // const deviceId = parseInt(request.headers.get("X-FEEDER-DEVICE-ID"));
+            const url = "https://dev.nononsenseapps.com//api/v2/migrate";
+
+            for (const device of fump.devices) {
+              const body: MigrateRequestV2 = {
+                syncCode: id,
+                deviceId: device.deviceId,
+                deviceName: device.deviceName,
+              };
+              // jonas
+              const init = {
+                body: JSON.stringify(body),
+                method: "POST",
+                headers: {
+                  "content-type": "application/json;charset=UTF-8",
+                },
+              };
+              // Don't care about result
+              await fetch(url, init);
+            }
+          }
+        } catch (e) {
+          console.log(e)
+        }
+        return response
       } catch (e) {
         console.log(e);
         return new Response(`No such chain`, { status: 404 });
@@ -464,7 +494,7 @@ export class SyncChain {
         && isLatestReadMarkOlderThan90Days(this.readMarkKeys)
       );
 
-      return shouldBeDeleted;
+    return shouldBeDeleted;
   }
 
   async selfDestructIfOldOrEmpty(): Promise<void> {
@@ -1032,6 +1062,12 @@ type UpdateFeedsResponse = {
 type ChainCreationTime = {
   timestamp: number;
 };
+
+type MigrateRequestV2 = {
+  syncCode: string;
+  deviceId: number;
+  deviceName: string;
+}
 
 const emptyETag = 'W/"0"';
 
