@@ -8,8 +8,28 @@
 # this machine's public IP, then replace ":80" below with your
 # domain name.
 
+:80 {
+	respond /robots.txt 200 {
+		body "User-agent: *
+Disallow: /"
+	}
+
+	respond "Go away" 404
+}
+
 dev.nononsenseapps.com {
-	reverse_proxy localhost:34217
+	handle /api/* {
+		reverse_proxy localhost:34217
+	}
+	handle /robots.txt {
+		respond 200 {
+			body "User-agent: *
+Disallow: /"
+		}
+	}
+	handle {
+		respond "Go away" 404
+	}
 	log {
 	}
 }
