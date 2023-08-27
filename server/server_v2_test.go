@@ -14,6 +14,65 @@ import (
 )
 
 func TestMigrateV2(t *testing.T) {
+	t.Run("Migrate errors if not cloudflare worker", func(t *testing.T) {
+		jsonRequest := MigrateRequestV2{
+			SyncCode:   "foo",
+			DeviceId:   999,
+			DeviceName: "bar",
+		}
+
+		jsonBody, _ := json.Marshal(jsonRequest)
+		request, _ := http.NewRequest(http.MethodPost, "/api/v2/migrate", bytes.NewReader(jsonBody))
+
+		response := httptest.NewRecorder()
+
+		store := InMemoryStore{
+			userDevices: make(map[string][]store.UserDevice),
+			calls:       make(map[string]int),
+		}
+		server := &FeederServer{
+			store: store,
+		}
+		server.ServeHTTP(response, request)
+
+		got := response.Code
+		want := 400
+
+		if got != want {
+			t.Errorf("want %d, got %d", want, got)
+		}
+	})
+
+	t.Run("Migrate errors if wrong cloudflare worker", func(t *testing.T) {
+		jsonRequest := MigrateRequestV2{
+			SyncCode:   "foo",
+			DeviceId:   999,
+			DeviceName: "bar",
+		}
+
+		jsonBody, _ := json.Marshal(jsonRequest)
+		request, _ := http.NewRequest(http.MethodPost, "/api/v2/migrate", bytes.NewReader(jsonBody))
+		request.Header.Add("Cf-Worker", "wrong worker")
+
+		response := httptest.NewRecorder()
+
+		store := InMemoryStore{
+			userDevices: make(map[string][]store.UserDevice),
+			calls:       make(map[string]int),
+		}
+		server := &FeederServer{
+			store: store,
+		}
+		server.ServeHTTP(response, request)
+
+		got := response.Code
+		want := 400
+
+		if got != want {
+			t.Errorf("want %d, got %d", want, got)
+		}
+	})
+
 	t.Run("Migrate calls store", func(t *testing.T) {
 		request := newMigrateRequestV2(t, "foo sync", 999, "bar device")
 
@@ -346,5 +405,6 @@ func newMigrateRequestV2(t *testing.T, syncCode string, deviceId int64, deviceNa
 
 	jsonBody, _ := json.Marshal(jsonRequest)
 	result, _ := http.NewRequest(http.MethodPost, "/api/v2/migrate", bytes.NewReader(jsonBody))
+	result.Header.Add("Cf-Worker", "nononsenseapps.com")
 	return result
 }

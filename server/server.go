@@ -46,6 +46,13 @@ func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) handleMigrateV2(w http.ResponseWriter, r *http.Request) {
+	// Migration is only accepted from the old sync server
+	cfWorker := r.Header["Cf-Worker"]
+	if cfWorker == nil || len(cfWorker) == 0 || cfWorker[0] != "nononsenseapps.com" {
+		http.Error(w, "You bad bad man. Go way.", http.StatusBadRequest)
+		return
+	}
+
 	if r.Body == nil {
 		http.Error(w, "No body", http.StatusBadRequest)
 		return
