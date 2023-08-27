@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/spacecowboy/feeder-sync/internal/store"
@@ -48,6 +49,7 @@ func (s *FeederServer) Close() error {
 }
 
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%s %s", r.Method, r.URL)
 	s.router.ServeHTTP(w, r)
 }
 
