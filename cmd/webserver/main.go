@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/spacecowboy/feeder-sync/server"
+	"github.com/spacecowboy/feeder-sync/internal/server"
 )
 
 func main() {
