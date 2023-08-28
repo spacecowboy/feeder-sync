@@ -93,11 +93,29 @@ func TestReadMarkV1(t *testing.T) {
 		}
 	})
 
-	t.Run("GET all but empty", func(t *testing.T) {
+	t.Run("GET no id in header", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
 		response := httptest.NewRecorder()
 
 		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 400
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("GET all but empty", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", "synccode")
+
+		server := newFeederServer()
+		server.store.EnsureMigration("synccode", int64(1234), "foodevice")
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -118,7 +136,9 @@ func TestReadMarkV1(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", nil)
 		response := httptest.NewRecorder()
 
+		request.Header.Add("X-FEEDER-ID", "synccode")
 		server := newFeederServer()
+		server.store.EnsureMigration("synccode", int64(1234), "foodevice")
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -137,7 +157,9 @@ func TestReadMarkV1(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
 		response := httptest.NewRecorder()
 
+		request.Header.Add("X-FEEDER-ID", "synccode")
 		server := newFeederServer()
+		server.store.EnsureMigration("synccode", int64(1234), "foodevice")
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -165,7 +187,9 @@ func TestReadMarkV1(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
 		response := httptest.NewRecorder()
 
+		request.Header.Add("X-FEEDER-ID", "synccode")
 		server := newFeederServer()
+		server.store.EnsureMigration("synccode", int64(1234), "foodevice")
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -178,6 +202,7 @@ func TestReadMarkV1(t *testing.T) {
 		getRequest, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
 		getResponse := httptest.NewRecorder()
 
+		getRequest.Header.Add("X-FEEDER-ID", "synccode")
 		server.ServeHTTP(getResponse, getRequest)
 
 		if getResponse.Code != 200 {

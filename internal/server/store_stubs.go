@@ -11,6 +11,7 @@ import (
 type InMemoryStore struct {
 	calls       map[string]int
 	userDevices map[string][]store.UserDevice
+	articles    map[string][]store.Article
 }
 
 func (s InMemoryStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
@@ -69,6 +70,17 @@ func (s InMemoryStore) AddDeviceToChainWithLegacy(syncCode string, deviceName st
 	return device, nil
 }
 
+func (s InMemoryStore) GetArticlesWithLegacy(syncCode string) ([]store.Article, error) {
+	articles := s.articles[syncCode]
+
+	if articles == nil {
+		// return []store.Article{}, errors.New("No such user")
+		return []store.Article{}, nil
+	}
+
+	return articles, nil
+}
+
 func (s InMemoryStore) Close() error {
 	return nil
 }
@@ -94,6 +106,10 @@ func (s ExplodingStore) AddDeviceToChainWithLegacy(syncCode string, deviceName s
 
 func (s ExplodingStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error) {
 	return 0, errors.New("BOOM")
+}
+
+func (s ExplodingStore) GetArticlesWithLegacy(syncCode string) ([]store.Article, error) {
+	return []store.Article{}, errors.New("BOOM")
 }
 
 func (s ExplodingStore) Close() error {

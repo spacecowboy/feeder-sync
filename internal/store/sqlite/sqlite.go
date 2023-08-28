@@ -121,3 +121,7 @@ func (s SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceName
 
 	return userCount + deviceCount, nil
 }
+
+func (s SqliteStore) GetArticlesWithLegacy(syncCode string) ([]store.Article, error) {
+	return []store.Article{}, errors.New("BOOM")
+}

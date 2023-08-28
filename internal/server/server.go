@@ -58,12 +58,31 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 	switch r.Method {
 	case "GET":
 		response := GetReadmarksResponseV1{
-			ReadMarks: []ReadMarkV1{
-				{Encrypted: "foo"},
-				{Encrypted: "foo"},
-			},
+			ReadMarks: make([]ReadMarkV1, 0, 1),
 		}
-		store.DataStore.
+
+		syncCode := r.Header.Get("X-FEEDER-ID")
+		if syncCode == "" {
+			http.Error(w, "Missing ID", http.StatusBadRequest)
+			return
+		}
+
+		articles, err := s.store.GetArticlesWithLegacy(syncCode)
+
+		if err != nil {
+			http.Error(w, "Could not fetch articles", http.StatusInternalServerError)
+			return
+		}
+
+		for _, article := range articles {
+			response.ReadMarks = append(
+				response.ReadMarks,
+				ReadMarkV1{
+					Encrypted: article.Identifier,
+					Timestamp: article.Timestamp,
+				},
+			)
+		}
 
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			http.Error(w, "Could not encode response", http.StatusInternalServerError)
@@ -74,6 +93,17 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, "No body", http.StatusBadRequest)
 			return
 		}
+
+		// syncCode := r.Header.Get("X-FEEDER-ID")
+		// if syncCode == "" {
+		// 	http.Error(w, "Missing ID", http.StatusBadRequest)
+		// 	return
+		// }
+
+		// TODO parse body
+
+		// TODO store items in Store
+
 	default:
 		http.Error(w, "Method not supported", http.StatusBadRequest)
 		return
