@@ -46,3 +46,38 @@ type JoinChainRequestV2 struct {
 	UserId     uuid.UUID `json:"userId"`
 	DeviceName string    `json:"deviceName"`
 }
+
+// TODO
+
+type ReadMarkV1 struct {
+	Timestamp int64  `json:"timestamp"`
+	Encrypted string `json:"encrypted"`
+}
+
+type GetReadMarksResponseV1 struct {
+	ReadMarks []ReadMarkV1 `json:"readMarks"`
+}
+
+type SendReadMarkV1 struct {
+	Encrypted string `json:"encrypted"`
+}
+
+type SendReadMarksResponseV1 struct {
+	ReadMarks []SendReadMarkV1 `json:"items"`
+}
+
+/*
+type GetFeedsResponse = {
+  hash: number;
+  encrypted: string;
+};
+
+type UpdateFeedsRequest = {
+  contentHash: number;
+  encrypted: string;
+};
+
+type UpdateFeedsResponse = {
+  hash: number;
+};
+*/
