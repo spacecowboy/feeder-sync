@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"golang.org/x/exp/slices"
 )
 
 func TestJoinSyncChainV1(t *testing.T) {
@@ -71,6 +73,133 @@ func TestJoinSyncChainV1(t *testing.T) {
 
 		if got != want {
 			t.Fatalf("want %d, got %d", want, got)
+		}
+	})
+}
+
+func TestReadMarkV1(t *testing.T) {
+	t.Run("Unsupported method", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodDelete, "/api/v1/ereadmark", nil)
+		response := httptest.NewRecorder()
+
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 400
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("GET all but empty", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		response := httptest.NewRecorder()
+
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 200
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+
+		var readMarks GetReadmarksResponseV1 = parseGetReadmarksResponseV1(t, response)
+
+		if len(readMarks.ReadMarks) != 0 {
+			t.Error("Strange, got read marks in the result")
+		}
+	})
+
+	t.Run("POST no body", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", nil)
+		response := httptest.NewRecorder()
+
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 400
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("POST empty body", func(t *testing.T) {
+		jsonRequest := SendReadMarksRequestV1{}
+
+		jsonBody, _ := json.Marshal(jsonRequest)
+
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
+		response := httptest.NewRecorder()
+
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 200
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("POST some items", func(t *testing.T) {
+		jsonRequest := SendReadMarksRequestV1{
+			ReadMarks: []SendReadMarkV1{
+				{
+					Encrypted: "foo",
+				},
+				{
+					Encrypted: "bar",
+				},
+			},
+		}
+
+		jsonBody, _ := json.Marshal(jsonRequest)
+
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
+		response := httptest.NewRecorder()
+
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 200
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+
+		getRequest, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		getResponse := httptest.NewRecorder()
+
+		server.ServeHTTP(getResponse, getRequest)
+
+		if getResponse.Code != 200 {
+			t.Errorf("want %d, got %d", 200, getResponse.Code)
+		}
+
+		var readMarks GetReadmarksResponseV1 = parseGetReadmarksResponseV1(t, getResponse)
+
+		if len(readMarks.ReadMarks) != 2 {
+			t.Error("Wrong number of read marks in response")
+		}
+
+		if !slices.Contains(readMarks.ReadMarks, ReadMarkV1{
+			Encrypted: "foo",
+		}) {
+			t.Error("Foo not in result")
+		}
+
+		if !slices.Contains(readMarks.ReadMarks, ReadMarkV1{
+			Encrypted: "bar",
+		}) {
+			t.Error("Bar not in result")
 		}
 	})
 }
@@ -164,6 +293,16 @@ func parseCreateResponseV1(t *testing.T, response *httptest.ResponseRecorder) Jo
 
 	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
 		t.Fatalf("Unable to parse response %q into JoinChainResponseV1, '%v", response.Body, err)
+	}
+
+	return got
+}
+
+func parseGetReadmarksResponseV1(t *testing.T, response *httptest.ResponseRecorder) GetReadmarksResponseV1 {
+	var got GetReadmarksResponseV1
+
+	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+		t.Fatalf("Unable to parse response %q into GetReadmarksResponseV1, '%v", response.Body, err)
 	}
 
 	return got

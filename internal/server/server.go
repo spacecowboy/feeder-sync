@@ -38,6 +38,9 @@ func NewServerWithStore(store store.DataStore) (FeederServer, error) {
 	server.router.Handle("/api/v2/create", http.HandlerFunc(server.handleCreateV2))
 	server.router.Handle("/api/v1/join", http.HandlerFunc(server.handleJoinV1))
 	server.router.Handle("/api/v2/join", http.HandlerFunc(server.handleJoinV2))
+	server.router.Handle("/api/v1/ereadmark", http.HandlerFunc(server.handleReadmarkV1))
+	// devices
+	// feeds
 
 	return server, nil
 }
@@ -49,6 +52,32 @@ func (s *FeederServer) Close() error {
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s %s", r.Method, r.URL)
 	s.router.ServeHTTP(w, r)
+}
+
+func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		response := GetReadmarksResponseV1{
+			ReadMarks: []ReadMarkV1{
+				{Encrypted: "foo"},
+				{Encrypted: "foo"},
+			},
+		}
+		store.DataStore.
+
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, "Could not encode response", http.StatusInternalServerError)
+			return
+		}
+	case "POST":
+		if r.Body == nil {
+			http.Error(w, "No body", http.StatusBadRequest)
+			return
+		}
+	default:
+		http.Error(w, "Method not supported", http.StatusBadRequest)
+		return
+	}
 }
 
 func (s *FeederServer) handleMigrateV2(w http.ResponseWriter, r *http.Request) {

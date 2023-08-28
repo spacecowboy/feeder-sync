@@ -54,7 +54,7 @@ type ReadMarkV1 struct {
 	Encrypted string `json:"encrypted"`
 }
 
-type GetReadMarksResponseV1 struct {
+type GetReadmarksResponseV1 struct {
 	ReadMarks []ReadMarkV1 `json:"readMarks"`
 }
 
@@ -62,7 +62,7 @@ type SendReadMarkV1 struct {
 	Encrypted string `json:"encrypted"`
 }
 
-type SendReadMarksResponseV1 struct {
+type SendReadMarksRequestV1 struct {
 	ReadMarks []SendReadMarkV1 `json:"items"`
 }
 

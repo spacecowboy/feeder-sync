@@ -2,13 +2,17 @@ module github.com/spacecowboy/feeder-sync
 
 go 1.21.0
 
-require github.com/google/uuid v1.3.0
+require (
+	github.com/golang-migrate/migrate/v4 v4.16.2
+	github.com/google/uuid v1.3.0
+	golang.org/x/exp v0.0.0-20230315142452-642cacee5cc0
+	modernc.org/sqlite v1.25.0
+)
 
 require (
 	github.com/alecthomas/assert/v2 v2.3.0 // indirect
 	github.com/alecthomas/repr v0.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/golang-migrate/migrate/v4 v4.16.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hexops/gotextdiff v1.0.3 // indirect
@@ -27,7 +31,6 @@ require (
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.6.0 // indirect
 	modernc.org/opt v0.1.3 // indirect
-	modernc.org/sqlite v1.25.0 // indirect
 	modernc.org/strutil v1.1.3 // indirect
 	modernc.org/token v1.0.1 // indirect
 )
