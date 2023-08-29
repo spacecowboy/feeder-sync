@@ -412,10 +412,9 @@ async function handleApiV1Request(
                       },
                     };
                     // Don't care about result
-                    console.log("Migrating JONAS")
                     await fetch(url, init);
-                    break
                   }
+                  break
                 }
                 default: {
                   // const devId = request.headers.get("X-FEEDER-DEVICE-ID")
