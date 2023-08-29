@@ -378,6 +378,8 @@ async function handleApiV1Request(
       try {
         const syncChain = env.chains.get(id);
 
+        const clonedRequest = request.clone()
+
         // Forward to the Durable Object
         const newUrl = new URL(request.url);
         newUrl.pathname = "/" + path.join("/");
@@ -385,30 +387,79 @@ async function handleApiV1Request(
         const realResponse = await syncChain.fetch(`${newUrl}`, request);
 
         try {
-          if (realResponse.ok || realResponse.status == 304) {
+          if (realResponse.ok) {
             const response = realResponse.clone()
-            // JONAS if success
-            const fump: DeviceListResponse = JSON.parse(await response.text())
-            // const deviceId = parseInt(request.headers.get("X-FEEDER-DEVICE-ID"));
-            const url = "https://dev.nononsenseapps.com/api/v2/migrate";
 
-            for (const device of fump.devices) {
-              const body: MigrateRequestV2 = {
-                syncCode: name,
-                deviceId: device.deviceId,
-                deviceName: device.deviceName,
-              };
-              // jonas
-              const init = {
-                body: JSON.stringify(body),
-                method: "POST",
-                headers: {
-                  "content-type": "application/json;charset=UTF-8",
-                },
-              };
-              // Don't care about result
-              console.log("Migrating JONAS")
-              await fetch(url, init);
+            // Migration
+            try {
+              const url = "https://dev.nononsenseapps.com/api/v2/migrate";
+              switch (path[0]) {
+                case "devices": {
+                  const fump: DeviceListResponse = JSON.parse(await response.text())
+
+                  for (const device of fump.devices) {
+                    const body: MigrateRequestV2 = {
+                      syncCode: name,
+                      deviceId: device.deviceId,
+                      deviceName: device.deviceName,
+                    };
+                    // jonas
+                    const init = {
+                      body: JSON.stringify(body),
+                      method: "POST",
+                      headers: {
+                        "content-type": "application/json;charset=UTF-8",
+                      },
+                    };
+                    // Don't care about result
+                    console.log("Migrating JONAS")
+                    await fetch(url, init);
+                    break
+                  }
+                }
+                default: {
+                  // const devId = request.headers.get("X-FEEDER-DEVICE-ID")
+                  // if (devId == null) {
+                  //   break
+                  // }
+                  // const deviceId = parseInt(devId);
+
+                  // const body: MigrateRequestV2 = {
+                  //   syncCode: name,
+                  //   deviceId: deviceId,
+                  //   deviceName: "", // TODO
+                  // };
+                  // const init = {
+                  //   body: JSON.stringify(body),
+                  //   method: "POST",
+                  //   headers: {
+                  //     "content-type": "application/json;charset=UTF-8",
+                  //   },
+                  // };
+                  // // Don't care about result
+                  // console.log("Migrating JONAS")
+                  // await fetch(url, init);
+
+                  break
+                }
+              }
+            } catch (e) {
+              console.log(e)
+            }
+            // Real method
+
+            try {
+              switch (path[0]) {
+                case "ereadmark": {
+                  if (clonedRequest.method === "POST") {
+                    // clonedRequest
+                    await fetch("https://dev.nononsenseapps.com/api/v1/ereadmark", clonedRequest)
+                  }
+                  break
+                }
+              }
+            } catch (e) {
+              console.log(e)
             }
           }
         } catch (e) {
@@ -864,13 +915,13 @@ export class SyncChain {
     etag: string | null
   ): Promise<Response> {
     var code = 200
-    if (
-      etag &&
-      this.matchesCurrentETag(etag, etagValue(this.currentDevicesETagNumber))
-    ) {
-      code = 304
-      //return new Response(null, { status: 304 });
-    }
+    // if (
+    //   etag &&
+    //   this.matchesCurrentETag(etag, etagValue(this.currentDevicesETagNumber))
+    // ) {
+    //   code = 304
+    //   //return new Response(null, { status: 304 });
+    // }
 
     const devices: DeviceMessage[] = [];
     this.deviceList.forEach((value, key) => {
