@@ -684,7 +684,7 @@ export class SyncChain {
               return new Response(null, { status: 405 });
             }
             const etag = request.headers.get("If-None-Match");
-            return await this.getDevicesRest(true, etag);
+            return await this.getDevicesRest(false, etag);
           }
           if (path[2]) {
             return new Response(`Not found: ${url.pathname}`, { status: 404 });
