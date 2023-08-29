@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -78,6 +79,18 @@ func TestJoinSyncChainV1(t *testing.T) {
 }
 
 func TestReadMarkV1(t *testing.T) {
+	tempdir := t.TempDir()
+	server, err := NewSqliteServer(tempdir)
+	if err != nil {
+		t.Fatalf("It blew up %v", err.Error())
+	}
+	goodSyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+	goodDeviceId := int64(1234)
+	_, err = server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
+	if err != nil {
+		t.Fatalf("Failed to insert device: %s", err.Error())
+	}
+
 	t.Run("Unsupported method", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodDelete, "/api/v1/ereadmark", nil)
 		response := httptest.NewRecorder()
@@ -108,21 +121,36 @@ func TestReadMarkV1(t *testing.T) {
 		}
 	})
 
+	t.Run("GET all no such user", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", "somebadcode")
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 400
+
+		if gotCode1 != wantCode1 {
+			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
 	t.Run("GET all but empty", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
 		response := httptest.NewRecorder()
 
-		request.Header.Add("X-FEEDER-ID", "synccode")
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", goodDeviceId))
 
-		server := newFeederServer()
-		server.store.EnsureMigration("synccode", int64(1234), "foodevice")
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
 		wantCode1 := 200
 
 		if gotCode1 != wantCode1 {
-			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
 		}
 
 		var readMarks GetReadmarksResponseV1 = parseGetReadmarksResponseV1(t, response)
@@ -136,9 +164,9 @@ func TestReadMarkV1(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", nil)
 		response := httptest.NewRecorder()
 
-		request.Header.Add("X-FEEDER-ID", "synccode")
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
 		server := newFeederServer()
-		server.store.EnsureMigration("synccode", int64(1234), "foodevice")
+		server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -157,20 +185,19 @@ func TestReadMarkV1(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
 		response := httptest.NewRecorder()
 
-		request.Header.Add("X-FEEDER-ID", "synccode")
-		server := newFeederServer()
-		server.store.EnsureMigration("synccode", int64(1234), "foodevice")
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", goodDeviceId))
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
-		wantCode1 := 200
+		wantCode1 := 204
 
 		if gotCode1 != wantCode1 {
-			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
 		}
 	})
 
-	t.Run("POST some items", func(t *testing.T) {
+	t.Run("POST some items without sync id", func(t *testing.T) {
 		jsonRequest := SendReadMarksRequestV1{
 			ReadMarks: []SendReadMarkV1{
 				{
@@ -187,44 +214,131 @@ func TestReadMarkV1(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
 		response := httptest.NewRecorder()
 
-		request.Header.Add("X-FEEDER-ID", "synccode")
-		server := newFeederServer()
-		server.store.EnsureMigration("synccode", int64(1234), "foodevice")
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
-		wantCode1 := 200
+		wantCode1 := 400
 
 		if gotCode1 != wantCode1 {
 			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("POST some items without device id", func(t *testing.T) {
+		jsonRequest := SendReadMarksRequestV1{
+			ReadMarks: []SendReadMarkV1{
+				{
+					Encrypted: "foo",
+				},
+				{
+					Encrypted: "bar",
+				},
+			},
+		}
+
+		jsonBody, _ := json.Marshal(jsonRequest)
+
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 400
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("POST some items invalid device id", func(t *testing.T) {
+		jsonRequest := SendReadMarksRequestV1{
+			ReadMarks: []SendReadMarkV1{
+				{
+					Encrypted: "foo",
+				},
+				{
+					Encrypted: "bar",
+				},
+			},
+		}
+
+		jsonBody, _ := json.Marshal(jsonRequest)
+
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", "99999")
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 400
+
+		if gotCode1 != wantCode1 {
+			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("POST some items", func(t *testing.T) {
+		jsonRequest := SendReadMarksRequestV1{
+			ReadMarks: []SendReadMarkV1{
+				{
+					Encrypted: "foo",
+				},
+				{
+					Encrypted: "bar",
+				},
+				{
+					Encrypted: "foo",
+				},
+			},
+		}
+
+		jsonBody, _ := json.Marshal(jsonRequest)
+
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", goodDeviceId))
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 204
+
+		if gotCode1 != wantCode1 {
+			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
 		}
 
 		getRequest, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
 		getResponse := httptest.NewRecorder()
 
-		getRequest.Header.Add("X-FEEDER-ID", "synccode")
+		getRequest.Header.Add("X-FEEDER-ID", goodSyncCode)
+		getRequest.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", goodDeviceId))
 		server.ServeHTTP(getResponse, getRequest)
 
 		if getResponse.Code != 200 {
-			t.Errorf("want %d, got %d", 200, getResponse.Code)
+			t.Fatalf("want %d, got %d", 200, getResponse.Code)
 		}
 
 		var readMarks GetReadmarksResponseV1 = parseGetReadmarksResponseV1(t, getResponse)
 
-		if len(readMarks.ReadMarks) != 2 {
-			t.Error("Wrong number of read marks in response")
+		if actual := len(readMarks.ReadMarks); actual != 2 {
+			t.Errorf("Wrong number of read marks in response: %d", actual)
 		}
 
-		if !slices.Contains(readMarks.ReadMarks, ReadMarkV1{
-			Encrypted: "foo",
+		if !slices.ContainsFunc[ReadMarkV1](readMarks.ReadMarks, func(readMark ReadMarkV1) bool {
+			return readMark.Encrypted == "foo"
 		}) {
-			t.Error("Foo not in result")
+			t.Error("foo not in result")
 		}
 
-		if !slices.Contains(readMarks.ReadMarks, ReadMarkV1{
-			Encrypted: "bar",
+		if !slices.ContainsFunc[ReadMarkV1](readMarks.ReadMarks, func(readMark ReadMarkV1) bool {
+			return readMark.Encrypted == "bar"
 		}) {
-			t.Error("Bar not in result")
+			t.Error("bar not in result")
 		}
 	})
 }

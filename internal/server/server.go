@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/spacecowboy/feeder-sync/internal/store"
 	"github.com/spacecowboy/feeder-sync/internal/store/sqlite"
@@ -55,21 +56,43 @@ func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) {
+	syncCode := r.Header.Get("X-FEEDER-ID")
+	if syncCode == "" {
+		log.Println("No sync code in header")
+		http.Error(w, "Missing ID", http.StatusBadRequest)
+		return
+	}
+
+	legacyDeviceIdString := r.Header.Get("X-FEEDER-DEVICE-ID")
+	if legacyDeviceIdString == "" {
+		log.Println("No device id in header")
+		http.Error(w, "Missing Device ID", http.StatusBadRequest)
+		return
+	}
+	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
+	if err != nil {
+		log.Println("Device Id was not a 64 bit number")
+		http.Error(w, "Bad Device ID", http.StatusBadRequest)
+		return
+	}
+
+	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
+	if err != nil {
+		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
+		http.Error(w, "No such user or device", http.StatusBadRequest)
+		return
+	}
+
 	switch r.Method {
 	case "GET":
 		response := GetReadmarksResponseV1{
 			ReadMarks: make([]ReadMarkV1, 0, 1),
 		}
 
-		syncCode := r.Header.Get("X-FEEDER-ID")
-		if syncCode == "" {
-			http.Error(w, "Missing ID", http.StatusBadRequest)
-			return
-		}
-
-		articles, err := s.store.GetArticlesWithLegacy(syncCode)
+		articles, err := s.store.GetArticlesWithLegacy(userDevice.UserId)
 
 		if err != nil {
+			log.Printf("Could not fetch articles: %s", err.Error())
 			http.Error(w, "Could not fetch articles", http.StatusInternalServerError)
 			return
 		}
@@ -79,7 +102,7 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 				response.ReadMarks,
 				ReadMarkV1{
 					Encrypted: article.Identifier,
-					Timestamp: article.Timestamp,
+					Timestamp: article.ReadTime,
 				},
 			)
 		}
@@ -88,21 +111,31 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, "Could not encode response", http.StatusInternalServerError)
 			return
 		}
+
 	case "POST":
 		if r.Body == nil {
+			log.Println("No body")
 			http.Error(w, "No body", http.StatusBadRequest)
 			return
 		}
 
-		// syncCode := r.Header.Get("X-FEEDER-ID")
-		// if syncCode == "" {
-		// 	http.Error(w, "Missing ID", http.StatusBadRequest)
-		// 	return
-		// }
+		var sendRequest SendReadMarksRequestV1
 
-		// TODO parse body
+		if err := json.NewDecoder(r.Body).Decode(&sendRequest); err != nil {
+			log.Println("Bad body")
+			http.Error(w, "Bad body", http.StatusBadRequest)
+			return
+		}
 
-		// TODO store items in Store
+		for _, readmark := range sendRequest.ReadMarks {
+			if err := s.store.AddLegacyArticle(userDevice.UserDbId, readmark.Encrypted); err != nil {
+				log.Printf("Failed to add article: %v", err.Error())
+				http.Error(w, "Failed to store article", http.StatusInternalServerError)
+				return
+			}
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 
 	default:
 		http.Error(w, "Method not supported", http.StatusBadRequest)

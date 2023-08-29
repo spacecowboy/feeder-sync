@@ -9,13 +9,16 @@ type DataStore interface {
 	RegisterNewUser(deviceName string) (UserDevice, error)
 	AddDeviceToChain(userId uuid.UUID, deviceName string) (UserDevice, error)
 	AddDeviceToChainWithLegacy(syncCode string, deviceName string) (UserDevice, error)
-	GetArticlesWithLegacy(syncCode string) ([]Article, error)
+	GetLegacyDevice(syncCode string, deviceId int64) (UserDevice, error)
+	GetArticlesWithLegacy(userId uuid.UUID) ([]Article, error)
+	AddLegacyArticle(userDbId int64, identifier string) error
 	// Inserts a new user and device with the given legacy values if not already exists.
 	// NOOP if already exists.
 	EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error)
 }
 
 type UserDevice struct {
+	UserDbId   int64
 	UserId     uuid.UUID
 	DeviceId   uuid.UUID
 	DeviceName string
@@ -28,6 +31,6 @@ type UserDevice struct {
 
 type Article struct {
 	UserId     uuid.UUID
-	Timestamp  int64
+	ReadTime   int64
 	Identifier string
 }

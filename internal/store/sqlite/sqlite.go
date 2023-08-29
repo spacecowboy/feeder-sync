@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -122,6 +123,88 @@ func (s SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceName
 	return userCount + deviceCount, nil
 }
 
-func (s SqliteStore) GetArticlesWithLegacy(syncCode string) ([]store.Article, error) {
-	return []store.Article{}, errors.New("BOOM")
+func (s SqliteStore) GetLegacyDevice(syncCode string, deviceId int64) (store.UserDevice, error) {
+
+	row := s.db.QueryRow(
+		`
+		select
+		  users.db_id,
+		  user_id,
+			device_id,
+			device_name,
+			legacy_sync_code,
+			legacy_device_id
+		from devices
+		inner join users on devices.user_db_id = users.db_id
+		where legacy_sync_code = ? and legacy_device_id = ?
+		limit 1
+		`,
+		syncCode,
+		deviceId,
+	)
+
+	userDevice := store.UserDevice{}
+	if err := row.Scan(&userDevice.UserDbId, &userDevice.UserId, &userDevice.DeviceId, &userDevice.DeviceName, &userDevice.LegacySyncCode, &userDevice.LegacyDeviceId); err != nil {
+		return userDevice, err
+	}
+
+	if err := row.Err(); err != nil {
+		return userDevice, err
+	}
+
+	return userDevice, nil
+}
+
+func (s SqliteStore) GetArticlesWithLegacy(userId uuid.UUID) ([]store.Article, error) {
+	rows, err := s.db.Query(
+		`
+		select
+		  user_id,
+			read_time,
+			identifier
+		from articles
+		inner join users on articles.user_db_id = users.db_id
+		where users.user_id = ?
+		`,
+		userId,
+	)
+
+	if err != nil {
+		log.Println(err.Error())
+		return nil, err
+	}
+	defer rows.Close()
+
+	var articles []store.Article
+
+	for rows.Next() {
+		var article store.Article
+		if err := rows.Scan(&article.UserId, &article.ReadTime, &article.Identifier); err != nil {
+			log.Println(err.Error())
+			return articles, err
+		}
+		articles = append(articles, article)
+	}
+	if err = rows.Err(); err != nil {
+		log.Println(err.Error())
+		return articles, err
+	}
+
+	return articles, nil
+}
+
+func (s SqliteStore) AddLegacyArticle(userDbId int64, identifier string) error {
+	_, err := s.db.Exec(
+		`insert into articles (user_db_id, identifier, read_time) values(?, ? ,?)`,
+		userDbId,
+		identifier,
+		time.Now().UnixMilli(),
+	)
+	if err != nil {
+		if !strings.Contains(err.Error(), "UNIQUE constraint failed: articles.user_db_id, articles.identifier") {
+			return err
+		}
+	}
+
+	return nil
 }

@@ -2,8 +2,10 @@ package server
 
 import (
 	"errors"
+	"path/filepath"
 
 	"github.com/spacecowboy/feeder-sync/internal/store"
+	"github.com/spacecowboy/feeder-sync/internal/store/sqlite"
 
 	"github.com/google/uuid"
 )
@@ -11,7 +13,7 @@ import (
 type InMemoryStore struct {
 	calls       map[string]int
 	userDevices map[string][]store.UserDevice
-	articles    map[string][]store.Article
+	articles    map[uuid.UUID][]store.Article
 }
 
 func (s InMemoryStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
@@ -70,8 +72,8 @@ func (s InMemoryStore) AddDeviceToChainWithLegacy(syncCode string, deviceName st
 	return device, nil
 }
 
-func (s InMemoryStore) GetArticlesWithLegacy(syncCode string) ([]store.Article, error) {
-	articles := s.articles[syncCode]
+func (s InMemoryStore) GetArticlesWithLegacy(userId uuid.UUID) ([]store.Article, error) {
+	articles := s.articles[userId]
 
 	if articles == nil {
 		// return []store.Article{}, errors.New("No such user")
@@ -79,6 +81,14 @@ func (s InMemoryStore) GetArticlesWithLegacy(syncCode string) ([]store.Article, 
 	}
 
 	return articles, nil
+}
+
+func (s InMemoryStore) AddLegacyArticle(userDbId int64, identifier string) error {
+	return errors.New("BOOM")
+}
+
+func (s InMemoryStore) GetLegacyDevice(syncCode string, deviceId int64) (store.UserDevice, error) {
+	return store.UserDevice{}, errors.New("BOOM")
 }
 
 func (s InMemoryStore) Close() error {
@@ -108,10 +118,31 @@ func (s ExplodingStore) EnsureMigration(syncCode string, deviceId int64, deviceN
 	return 0, errors.New("BOOM")
 }
 
-func (s ExplodingStore) GetArticlesWithLegacy(syncCode string) ([]store.Article, error) {
+func (s ExplodingStore) GetArticlesWithLegacy(userId uuid.UUID) ([]store.Article, error) {
 	return []store.Article{}, errors.New("BOOM")
+}
+
+func (s ExplodingStore) AddLegacyArticle(userDbId int64, identifier string) error {
+	return errors.New("BOOM")
+}
+
+func (s ExplodingStore) GetLegacyDevice(syncCode string, deviceId int64) (store.UserDevice, error) {
+	return store.UserDevice{}, errors.New("BOOM")
 }
 
 func (s ExplodingStore) Close() error {
 	return errors.New("BOOM")
+}
+
+func NewSqliteServer(tempdir string) (FeederServer, error) {
+	store, err := sqlite.New(filepath.Join(tempdir, "sqlite.db"))
+	if err != nil {
+		return FeederServer{}, err
+	}
+
+	if err := store.RunMigrations("file://../../migrations"); err != nil {
+		return FeederServer{}, err
+	}
+
+	return NewServerWithStore(store)
 }
