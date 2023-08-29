@@ -168,6 +168,7 @@ func (s *FeederServer) handleMigrateV2(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Badness", http.StatusInternalServerError)
 		return
 	}
+	log.Printf("Migrated %s, %d", migrateRequest.SyncCode, migrateRequest.DeviceId)
 
 	w.WriteHeader(http.StatusNoContent)
 }

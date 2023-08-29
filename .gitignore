@@ -7,3 +7,4 @@ target
 .admin-secret
 *.db
 out
+.env

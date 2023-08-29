@@ -97,6 +97,7 @@ func (s SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceName
 		if err != nil {
 			return userCount + deviceCount, fmt.Errorf("insert user2: %v", err)
 		}
+		log.Printf("Migrated user %s", syncCode)
 	}
 
 	// Insert device
@@ -118,6 +119,7 @@ func (s SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceName
 		if err != nil {
 			return userCount + deviceCount, fmt.Errorf("insert user2: %v", err)
 		}
+		log.Printf("Migrated device for user %d, %s", deviceId, syncCode)
 	}
 
 	return userCount + deviceCount, nil
