@@ -448,11 +448,11 @@ async function handleApiV1Request(
             // Real method
 
             try {
+              const newUrl = clonedRequest.url.replace("feeder-sync", "dev")
               switch (path[0]) {
+                case "devices":
                 case "ereadmark": {
-                  // if (clonedRequest.method === "POST") {
-                  await fetch("https://dev.nononsenseapps.com/api/v1/ereadmark", clonedRequest)
-                  // }
+                  await fetch(newUrl, clonedRequest)
                   break
                 }
               }
