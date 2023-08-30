@@ -147,9 +147,8 @@ func TestStoreApi(t *testing.T) {
 			t.Fatalf("Wrong number of articles: %d", len(articles))
 		}
 
-		// Use read time as filter
 		article := articles[0]
-		articles, err = store.GetArticles(userDevice.UserId, article.ReadTime)
+		articles, err = store.GetArticles(userDevice.UserId, article.UpdatedAt)
 		if err != nil {
 			t.Fatalf("Got an error: %q", err)
 		}

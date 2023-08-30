@@ -20,5 +20,5 @@ func main() {
 
 	addr := ":34217"
 	log.Printf("Serving on %q", addr)
-	log.Fatal(http.ListenAndServe(addr, &server))
+	log.Fatal(http.ListenAndServe(addr, server))
 }

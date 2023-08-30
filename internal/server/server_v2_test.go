@@ -330,7 +330,7 @@ func newFeederServer() *FeederServer {
 		},
 	)
 
-	return &server
+	return server
 }
 
 type BadResponseWriter struct {

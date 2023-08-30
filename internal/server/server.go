@@ -15,20 +15,20 @@ type FeederServer struct {
 	router *http.ServeMux
 }
 
-func NewServer() (FeederServer, error) {
+func NewServer() (*FeederServer, error) {
 	store, err := sqlite.New("./sqlite.db")
 	if err != nil {
-		return FeederServer{}, err
+		return nil, err
 	}
 
 	if err := store.RunMigrations("file://./migrations"); err != nil {
-		return FeederServer{}, err
+		return nil, err
 	}
 
-	return NewServerWithStore(store)
+	return NewServerWithStore(&store)
 }
 
-func NewServerWithStore(store store.DataStore) (FeederServer, error) {
+func NewServerWithStore(store store.DataStore) (*FeederServer, error) {
 	server := FeederServer{
 		store:  store,
 		router: http.NewServeMux(),
@@ -43,7 +43,7 @@ func NewServerWithStore(store store.DataStore) (FeederServer, error) {
 	// devices
 	// feeds
 
-	return server, nil
+	return &server, nil
 }
 
 func (s *FeederServer) Close() error {

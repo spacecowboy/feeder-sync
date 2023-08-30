@@ -31,11 +31,11 @@ func New(dbPath string) (SqliteStore, error) {
 	}, nil
 }
 
-func (s SqliteStore) Close() error {
+func (s *SqliteStore) Close() error {
 	return s.db.Close()
 }
 
-func (s SqliteStore) RunMigrations(path string) error {
+func (s *SqliteStore) RunMigrations(path string) error {
 	driver, err := sqlite.WithInstance(s.db, &sqlite.Config{})
 	if err != nil {
 		return err
@@ -53,19 +53,19 @@ func (s SqliteStore) RunMigrations(path string) error {
 	return nil
 }
 
-func (s SqliteStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
+func (s *SqliteStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
 	return store.UserDevice{}, errors.New("TODO")
 }
 
-func (s SqliteStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (store.UserDevice, error) {
+func (s *SqliteStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (store.UserDevice, error) {
 	return store.UserDevice{}, errors.New("TODO")
 }
 
-func (s SqliteStore) AddDeviceToChainWithLegacy(syncCode string, deviceName string) (store.UserDevice, error) {
+func (s *SqliteStore) AddDeviceToChainWithLegacy(syncCode string, deviceName string) (store.UserDevice, error) {
 	return store.UserDevice{}, errors.New("TODO")
 }
 
-func (s SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error) {
+func (s *SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error) {
 	if len(syncCode) != 64 {
 		return 0, fmt.Errorf("Not a 64 char synccode: %q", syncCode)
 	}
@@ -125,7 +125,7 @@ func (s SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceName
 	return userCount + deviceCount, nil
 }
 
-func (s SqliteStore) GetLegacyDevice(syncCode string, deviceId int64) (store.UserDevice, error) {
+func (s *SqliteStore) GetLegacyDevice(syncCode string, deviceId int64) (store.UserDevice, error) {
 
 	row := s.db.QueryRow(
 		`
@@ -157,16 +157,17 @@ func (s SqliteStore) GetLegacyDevice(syncCode string, deviceId int64) (store.Use
 	return userDevice, nil
 }
 
-func (s SqliteStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
+func (s *SqliteStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
 	rows, err := s.db.Query(
 		`
 		select
 		  user_id,
 			read_time,
-			identifier
+			identifier,
+			updated_at
 		from articles
 		inner join users on articles.user_db_id = users.db_id
-		where users.user_id = ? and read_time > ?
+		where users.user_id = ? and updated_at > ?
 		`,
 		userId,
 		sinceMillis,
@@ -182,7 +183,7 @@ func (s SqliteStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.A
 
 	for rows.Next() {
 		var article store.Article
-		if err := rows.Scan(&article.UserId, &article.ReadTime, &article.Identifier); err != nil {
+		if err := rows.Scan(&article.UserId, &article.ReadTime, &article.Identifier, &article.UpdatedAt); err != nil {
 			log.Println(err.Error())
 			return articles, err
 		}
@@ -196,12 +197,14 @@ func (s SqliteStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.A
 	return articles, nil
 }
 
-func (s SqliteStore) AddLegacyArticle(userDbId int64, identifier string) error {
+func (s *SqliteStore) AddLegacyArticle(userDbId int64, identifier string) error {
+	now := time.Now().UnixMilli()
 	_, err := s.db.Exec(
-		`insert into articles (user_db_id, identifier, read_time) values(?, ? ,?)`,
+		`insert into articles (user_db_id, identifier, read_time, updated_at) values(?, ? ,?, ?)`,
 		userDbId,
 		identifier,
-		time.Now().UnixMilli(),
+		now,
+		now,
 	)
 	if err != nil {
 		if !strings.Contains(err.Error(), "UNIQUE constraint failed: articles.user_db_id, articles.identifier") {

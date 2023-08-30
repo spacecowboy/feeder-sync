@@ -134,15 +134,15 @@ func (s ExplodingStore) Close() error {
 	return errors.New("BOOM")
 }
 
-func NewSqliteServer(tempdir string) (FeederServer, error) {
+func NewSqliteServer(tempdir string) (*FeederServer, error) {
 	store, err := sqlite.New(filepath.Join(tempdir, "sqlite.db"))
 	if err != nil {
-		return FeederServer{}, err
+		return nil, err
 	}
 
 	if err := store.RunMigrations("file://../../migrations"); err != nil {
-		return FeederServer{}, err
+		return nil, err
 	}
 
-	return NewServerWithStore(store)
+	return NewServerWithStore(&store)
 }

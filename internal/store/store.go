@@ -22,7 +22,7 @@ type UserDevice struct {
 	UserId     uuid.UUID
 	DeviceId   uuid.UUID
 	DeviceName string
-	// LastSeen
+	LastSeen   int64
 
 	// Migration fields
 	LegacySyncCode string
@@ -33,4 +33,5 @@ type Article struct {
 	UserId     uuid.UUID
 	ReadTime   int64
 	Identifier string
+	UpdatedAt  int64
 }
