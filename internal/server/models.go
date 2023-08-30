@@ -24,6 +24,23 @@ type DeviceListResponseV1 struct {
 	Devices []DeviceMessageV1 `json:"Devices"`
 }
 
+type ReadMarkV1 struct {
+	Timestamp int64  `json:"timestamp"`
+	Encrypted string `json:"encrypted"`
+}
+
+type GetReadmarksResponseV1 struct {
+	ReadMarks []ReadMarkV1 `json:"readMarks"`
+}
+
+type SendReadMarkV1 struct {
+	Encrypted string `json:"encrypted"`
+}
+
+type SendReadMarksRequestV1 struct {
+	ReadMarks []SendReadMarkV1 `json:"items"`
+}
+
 // V2 objects below
 
 type MigrateRequestV2 struct {
@@ -48,23 +65,6 @@ type JoinChainRequestV2 struct {
 }
 
 // TODO
-
-type ReadMarkV1 struct {
-	Timestamp int64  `json:"timestamp"`
-	Encrypted string `json:"encrypted"`
-}
-
-type GetReadmarksResponseV1 struct {
-	ReadMarks []ReadMarkV1 `json:"readMarks"`
-}
-
-type SendReadMarkV1 struct {
-	Encrypted string `json:"encrypted"`
-}
-
-type SendReadMarksRequestV1 struct {
-	ReadMarks []SendReadMarkV1 `json:"items"`
-}
 
 /*
 type GetFeedsResponse = {

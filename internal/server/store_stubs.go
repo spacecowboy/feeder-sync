@@ -72,7 +72,7 @@ func (s InMemoryStore) AddDeviceToChainWithLegacy(syncCode string, deviceName st
 	return device, nil
 }
 
-func (s InMemoryStore) GetArticlesWithLegacy(userId uuid.UUID) ([]store.Article, error) {
+func (s InMemoryStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
 	articles := s.articles[userId]
 
 	if articles == nil {
@@ -118,7 +118,7 @@ func (s ExplodingStore) EnsureMigration(syncCode string, deviceId int64, deviceN
 	return 0, errors.New("BOOM")
 }
 
-func (s ExplodingStore) GetArticlesWithLegacy(userId uuid.UUID) ([]store.Article, error) {
+func (s ExplodingStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
 	return []store.Article{}, errors.New("BOOM")
 }
 

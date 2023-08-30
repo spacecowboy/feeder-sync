@@ -157,7 +157,7 @@ func (s SqliteStore) GetLegacyDevice(syncCode string, deviceId int64) (store.Use
 	return userDevice, nil
 }
 
-func (s SqliteStore) GetArticlesWithLegacy(userId uuid.UUID) ([]store.Article, error) {
+func (s SqliteStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
 	rows, err := s.db.Query(
 		`
 		select
@@ -166,9 +166,10 @@ func (s SqliteStore) GetArticlesWithLegacy(userId uuid.UUID) ([]store.Article, e
 			identifier
 		from articles
 		inner join users on articles.user_db_id = users.db_id
-		where users.user_id = ?
+		where users.user_id = ? and read_time > ?
 		`,
 		userId,
+		sinceMillis,
 	)
 
 	if err != nil {

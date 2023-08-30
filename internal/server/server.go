@@ -89,7 +89,19 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 			ReadMarks: make([]ReadMarkV1, 0, 1),
 		}
 
-		articles, err := s.store.GetArticlesWithLegacy(userDevice.UserId)
+		sinceRaw := r.URL.Query().Get("since")
+		// milliseconds
+		var since int64 = 0
+		if sinceRaw != "" {
+			since, err = strconv.ParseInt(sinceRaw, 10, 64)
+
+			if err != nil {
+				http.Error(w, "Invalid value for since-queryParam", http.StatusBadRequest)
+				return
+			}
+		}
+
+		articles, err := s.store.GetArticles(userDevice.UserId, since)
 
 		if err != nil {
 			log.Printf("Could not fetch articles: %s", err.Error())
@@ -168,7 +180,6 @@ func (s *FeederServer) handleMigrateV2(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Badness", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("Migrated %s, %d", migrateRequest.SyncCode, migrateRequest.DeviceId)
 
 	w.WriteHeader(http.StatusNoContent)
 }

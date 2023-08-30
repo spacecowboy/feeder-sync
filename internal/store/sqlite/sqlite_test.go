@@ -111,6 +111,53 @@ func TestStoreApi(t *testing.T) {
 			t.Errorf("Wanted 2, but device count: %d", deviceCount)
 		}
 	})
+
+	t.Run("Write and get legacy articles", func(t *testing.T) {
+		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+		_, err := store.EnsureMigration(legacySyncCode, 1, "devicename")
+		if err != nil {
+			t.Fatalf("Got an error: %q", err)
+		}
+
+		userDevice, err := store.GetLegacyDevice(legacySyncCode, 1)
+		if err != nil {
+			t.Fatalf("Got an error: %q", err)
+		}
+
+		articles, err := store.GetArticles(userDevice.UserId, 0)
+		if err != nil {
+			t.Fatalf("Got an error: %q", err)
+		}
+
+		if len(articles) != 0 {
+			t.Fatalf("Expected no articles yet: %d", len(articles))
+		}
+
+		if err = store.AddLegacyArticle(userDevice.UserDbId, "first"); err != nil {
+			t.Fatalf("Got an error: %q", err)
+		}
+
+		// Now should get one
+		articles, err = store.GetArticles(userDevice.UserId, 0)
+		if err != nil {
+			t.Fatalf("Got an error: %q", err)
+		}
+
+		if len(articles) != 1 {
+			t.Fatalf("Wrong number of articles: %d", len(articles))
+		}
+
+		// Use read time as filter
+		article := articles[0]
+		articles, err = store.GetArticles(userDevice.UserId, article.ReadTime)
+		if err != nil {
+			t.Fatalf("Got an error: %q", err)
+		}
+
+		if len(articles) != 0 {
+			t.Fatalf("Wrong number of articles: %d", len(articles))
+		}
+	})
 }
 
 func TestMigrations(t *testing.T) {
