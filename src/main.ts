@@ -387,7 +387,7 @@ async function handleApiV1Request(
         const realResponse = await syncChain.fetch(`${newUrl}`, request);
 
         try {
-          if (realResponse.ok) {
+          if (realResponse.ok || realResponse.status === 304) {
             const response = realResponse.clone()
 
             // Migration
@@ -450,10 +450,9 @@ async function handleApiV1Request(
             try {
               switch (path[0]) {
                 case "ereadmark": {
-                  if (clonedRequest.method === "POST") {
-                    // clonedRequest
-                    await fetch("https://dev.nononsenseapps.com/api/v1/ereadmark", clonedRequest)
-                  }
+                  // if (clonedRequest.method === "POST") {
+                  await fetch("https://dev.nononsenseapps.com/api/v1/ereadmark", clonedRequest)
+                  // }
                   break
                 }
               }
