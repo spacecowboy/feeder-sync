@@ -120,9 +120,12 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 		}
 
 		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("Could not encode articles: %s", err.Error())
 			http.Error(w, "Could not encode response", http.StatusInternalServerError)
 			return
 		}
+
+		log.Printf("Returned %d articles", len(articles))
 
 	case "POST":
 		if r.Body == nil {
