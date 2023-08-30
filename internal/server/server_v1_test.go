@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -452,6 +453,126 @@ func TestCreateSyncChainV1(t *testing.T) {
 	})
 }
 
+func TestFeedsV1(t *testing.T) {
+	tempdir := t.TempDir()
+	server, err := NewSqliteServer(tempdir)
+	if err != nil {
+		t.Fatalf("It blew up %v", err.Error())
+	}
+	goodSyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+	goodDeviceId := int64(1234)
+	_, err = server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
+	if err != nil {
+		t.Fatalf("Failed to insert device: %s", err.Error())
+	}
+	userDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+	if err != nil {
+		t.Fatalf("Got error: %s", err.Error())
+	}
+
+	t.Run("Unsupported method DELETE handler", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/devices/%d", goodDeviceId), nil)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 405
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("Uknown path", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/devices/foo/%d", goodDeviceId), nil)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 404
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("Unsupported method GET handler", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodDelete, "/api/v1/devices", nil)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 405
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("Get devices", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/devices", nil)
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", goodDeviceId))
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 200
+
+		if gotCode1 != wantCode1 {
+			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
+		}
+
+		devices := parseDevicesResponseV1(t, response)
+		if len(devices.Devices) != 1 {
+			t.Errorf("Wrong count of devices in result: %d", len(devices.Devices))
+		}
+
+		if devices.Devices[0].DeviceId != userDevice.LegacyDeviceId {
+			t.Errorf("Expected %d but was %d", userDevice.LegacyDeviceId, devices.Devices[0].DeviceId)
+		}
+	})
+
+	t.Run("Delete device", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/devices/%d", goodDeviceId), nil)
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", goodDeviceId))
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 200
+
+		if gotCode1 != wantCode1 {
+			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
+		}
+
+		devices := parseDevicesResponseV1(t, response)
+		if len(devices.Devices) != 0 {
+			t.Errorf("Failed to delete device: %d", len(devices.Devices))
+		}
+
+		_, err = server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+		if err != sql.ErrNoRows {
+			t.Errorf("Device is still in store: %q", err)
+		}
+
+		allDevices, err := server.store.GetDevices(userDevice.UserId)
+		if err != nil {
+			t.Errorf("What? %s", err.Error())
+		}
+
+		if len(allDevices) != 0 {
+			t.Errorf("Device count should be 0, not %d", len(allDevices))
+		}
+	})
+}
+
 func newCreateRequestV1(t *testing.T, deviceName string) *http.Request {
 	body := CreateChainRequestV1{
 		DeviceName: deviceName,
@@ -466,6 +587,16 @@ func parseCreateResponseV1(t *testing.T, response *httptest.ResponseRecorder) Jo
 
 	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
 		t.Fatalf("Unable to parse response %q into JoinChainResponseV1, '%v", response.Body, err)
+	}
+
+	return got
+}
+
+func parseDevicesResponseV1(t *testing.T, response *httptest.ResponseRecorder) DeviceListResponseV1 {
+	var got DeviceListResponseV1
+
+	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+		t.Fatalf("Unable to parse response %q into DeviceListResponseV1, '%v", response.Body, err)
 	}
 
 	return got

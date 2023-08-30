@@ -104,6 +104,14 @@ func (s InMemoryStore) UpdateLastSeenForDevice(device store.UserDevice) (int64, 
 	return 0, errors.New("BOOM")
 }
 
+func (s InMemoryStore) RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId int64) (int64, error) {
+	return 0, errors.New("BOOM")
+}
+
+func (s InMemoryStore) GetDevices(userId uuid.UUID) ([]store.UserDevice, error) {
+	return nil, errors.New("BOOM")
+}
+
 type ExplodingStore struct{}
 
 func (s ExplodingStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
@@ -123,7 +131,7 @@ func (s ExplodingStore) EnsureMigration(syncCode string, deviceId int64, deviceN
 }
 
 func (s ExplodingStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
-	return []store.Article{}, errors.New("BOOM")
+	return nil, errors.New("BOOM")
 }
 
 func (s ExplodingStore) AddLegacyArticle(userDbId int64, identifier string) error {
@@ -140,6 +148,14 @@ func (s ExplodingStore) UpdateLastSeenForDevice(device store.UserDevice) (int64,
 
 func (s ExplodingStore) Close() error {
 	return errors.New("BOOM")
+}
+
+func (s ExplodingStore) RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId int64) (int64, error) {
+	return 0, errors.New("BOOM")
+}
+
+func (s ExplodingStore) GetDevices(userId uuid.UUID) ([]store.UserDevice, error) {
+	return nil, errors.New("BOOM")
 }
 
 func NewSqliteServer(tempdir string) (*FeederServer, error) {

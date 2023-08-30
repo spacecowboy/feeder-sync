@@ -173,12 +173,7 @@ func (s *SqliteStore) UpdateLastSeenForDevice(device store.UserDevice) (int64, e
 		return 0, err
 	}
 
-	count, err := result.RowsAffected()
-	if err != nil {
-		return count, err
-	}
-
-	return count, nil
+	return result.RowsAffected()
 }
 
 func (s *SqliteStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
@@ -237,4 +232,62 @@ func (s *SqliteStore) AddLegacyArticle(userDbId int64, identifier string) error 
 	}
 
 	return nil
+}
+
+func (s *SqliteStore) RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId int64) (int64, error) {
+	result, err := s.db.Exec(
+		`
+		delete from devices
+		  where user_db_id = ? and legacy_device_id = ?
+		`,
+		userDbId,
+		legacyDeviceId,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+func (s *SqliteStore) GetDevices(userId uuid.UUID) ([]store.UserDevice, error) {
+	rows, err := s.db.Query(
+		`
+		select
+		  users.db_id,
+		  user_id,
+			device_id,
+			device_name,
+			legacy_sync_code,
+			legacy_device_id,
+			last_seen
+		from devices
+		inner join users on devices.user_db_id = users.db_id
+		where user_id = ?
+		`,
+		userId,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var devices []store.UserDevice
+
+	for rows.Next() {
+		var userDevice store.UserDevice
+		if err := rows.Scan(&userDevice.UserDbId, &userDevice.UserId, &userDevice.DeviceId, &userDevice.DeviceName, &userDevice.LegacySyncCode, &userDevice.LegacyDeviceId, &userDevice.LastSeen); err != nil {
+			log.Println(err.Error())
+			return devices, err
+		}
+
+		devices = append(devices, userDevice)
+	}
+	if err = rows.Err(); err != nil {
+		log.Println(err.Error())
+		return devices, err
+	}
+
+	return devices, nil
 }

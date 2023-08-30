@@ -9,7 +9,9 @@ type DataStore interface {
 	RegisterNewUser(deviceName string) (UserDevice, error)
 	AddDeviceToChain(userId uuid.UUID, deviceName string) (UserDevice, error)
 	AddDeviceToChainWithLegacy(syncCode string, deviceName string) (UserDevice, error)
+	GetDevices(userId uuid.UUID) ([]UserDevice, error)
 	GetLegacyDevice(syncCode string, deviceId int64) (UserDevice, error)
+	RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId int64) (int64, error)
 	UpdateLastSeenForDevice(device UserDevice) (int64, error)
 	GetArticles(userId uuid.UUID, sinceMillis int64) ([]Article, error)
 	AddLegacyArticle(userDbId int64, identifier string) error

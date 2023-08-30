@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"path"
 	"strconv"
 
 	"github.com/spacecowboy/feeder-sync/internal/store"
@@ -40,8 +41,11 @@ func NewServerWithStore(store store.DataStore) (*FeederServer, error) {
 	server.router.Handle("/api/v1/join", http.HandlerFunc(server.handleJoinV1))
 	server.router.Handle("/api/v2/join", http.HandlerFunc(server.handleJoinV2))
 	server.router.Handle("/api/v1/ereadmark", http.HandlerFunc(server.handleReadmarkV1))
-	// devices
+	server.router.Handle("/api/v1/devices", http.HandlerFunc(server.handleDeviceGetV1))
+	// Ending slash is like a wildcard
+	server.router.Handle("/api/v1/devices/", http.HandlerFunc(server.handleDeviceDeleteV1))
 	// feeds
+	// server.router.Handle("/api/v1/feeds", ..)
 
 	return &server, nil
 }
@@ -53,6 +57,166 @@ func (s *FeederServer) Close() error {
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s %s", r.Method, r.URL)
 	s.router.ServeHTTP(w, r)
+}
+
+func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	syncCode := r.Header.Get("X-FEEDER-ID")
+	if syncCode == "" {
+		log.Println("No sync code in header")
+		http.Error(w, "Missing ID", http.StatusBadRequest)
+		return
+	}
+
+	legacyDeviceIdString := r.Header.Get("X-FEEDER-DEVICE-ID")
+	if legacyDeviceIdString == "" {
+		log.Println("No device id in header")
+		http.Error(w, "Missing Device ID", http.StatusBadRequest)
+		return
+	}
+	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
+	if err != nil {
+		log.Println("Device Id was not a 64 bit number")
+		http.Error(w, "Bad Device ID", http.StatusBadRequest)
+		return
+	}
+
+	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
+	if err != nil {
+		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
+		http.Error(w, "No such user or device", http.StatusBadRequest)
+		return
+	}
+
+	_, err = s.store.UpdateLastSeenForDevice(userDevice)
+	if err != nil {
+		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
+		http.Error(w, "Something bad happened", http.StatusInternalServerError)
+		return
+	}
+
+	devices, err := s.store.GetDevices(userDevice.UserId)
+	if err != nil {
+		log.Printf("Failed to fetch devices for user %s: %s", userDevice.UserId, err.Error())
+		http.Error(w, "Something bad happened", http.StatusInternalServerError)
+		return
+	}
+
+	response := DeviceListResponseV1{
+		Devices: make([]DeviceMessageV1, 0, len(devices)),
+	}
+
+	for _, device := range devices {
+		response.Devices = append(
+			response.Devices,
+			DeviceMessageV1{
+				DeviceId:   device.LegacyDeviceId,
+				DeviceName: device.DeviceName,
+			},
+		)
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Could not encode devices: %s", err.Error())
+		http.Error(w, "Could not encode response", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Returned %d devices", len(devices))
+}
+
+func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "DELETE" {
+		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if path.Dir(r.URL.Path) != "/api/v1/devices" {
+		http.Error(w, "No no", http.StatusNotFound)
+		return
+	}
+
+	syncCode := r.Header.Get("X-FEEDER-ID")
+	if syncCode == "" {
+		log.Println("No sync code in header")
+		http.Error(w, "Missing ID", http.StatusBadRequest)
+		return
+	}
+
+	legacyDeviceIdString := r.Header.Get("X-FEEDER-DEVICE-ID")
+	if legacyDeviceIdString == "" {
+		log.Println("No device id in header")
+		http.Error(w, "Missing Device ID", http.StatusBadRequest)
+		return
+	}
+	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
+	if err != nil {
+		log.Println("Device Id was not a 64 bit number")
+		http.Error(w, "Bad Device ID", http.StatusBadRequest)
+		return
+	}
+
+	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
+	if err != nil {
+		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
+		http.Error(w, "No such user or device", http.StatusBadRequest)
+		return
+	}
+
+	_, err = s.store.UpdateLastSeenForDevice(userDevice)
+	if err != nil {
+		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
+		http.Error(w, "Something bad happened", http.StatusInternalServerError)
+		return
+	}
+
+	targetLegacyDeviceIdString := path.Base(r.URL.Path)
+	targetLegacyDeviceId, err := strconv.ParseInt(targetLegacyDeviceIdString, 10, 64)
+	if err != nil {
+		log.Println("Target Device Id was not a 64 bit number")
+		http.Error(w, "Bad Device ID", http.StatusBadRequest)
+		return
+	}
+
+	_, err = s.store.RemoveDeviceWithLegacy(userDevice.UserDbId, targetLegacyDeviceId)
+	if err != nil {
+		log.Printf("Failed to delete device %d for device %s: %s", targetLegacyDeviceId, userDevice.DeviceId, err.Error())
+		http.Error(w, "Something bad happened", http.StatusInternalServerError)
+		return
+	}
+
+	devices, err := s.store.GetDevices(userDevice.UserId)
+	if err != nil {
+		log.Printf("Failed to fetch devices for user %s: %s", userDevice.UserId, err.Error())
+		http.Error(w, "Something bad happened", http.StatusInternalServerError)
+		return
+	}
+
+	response := DeviceListResponseV1{
+		Devices: make([]DeviceMessageV1, len(devices)),
+	}
+
+	for _, device := range devices {
+		response.Devices = append(
+			response.Devices,
+			DeviceMessageV1{
+				DeviceId:   device.LegacyDeviceId,
+				DeviceName: device.DeviceName,
+			},
+		)
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Could not encode devices: %s", err.Error())
+		http.Error(w, "Could not encode response", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Returned %d devices", len(devices))
 }
 
 func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) {
