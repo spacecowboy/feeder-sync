@@ -90,6 +90,10 @@ func TestReadMarkV1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to insert device: %s", err.Error())
 	}
+	userDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+	if err != nil {
+		t.Fatalf("Got error: %s", err.Error())
+	}
 
 	t.Run("Unsupported method", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodDelete, "/api/v1/ereadmark", nil)
@@ -194,6 +198,16 @@ func TestReadMarkV1(t *testing.T) {
 
 		if gotCode1 != wantCode1 {
 			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
+		}
+
+		// Also check that lastSeen has been updated
+		updatedDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+		if err != nil {
+			t.Fatalf("Got error: %s", err.Error())
+		}
+
+		if updatedDevice.LastSeen <= userDevice.LastSeen {
+			t.Errorf("Last seen has not been updated: %d vs %d", updatedDevice.LastSeen, userDevice.LastSeen)
 		}
 	})
 
@@ -312,6 +326,16 @@ func TestReadMarkV1(t *testing.T) {
 			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
 		}
 
+		// Also check that lastSeen has been updated
+		preGetDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+		if err != nil {
+			t.Fatalf("Got error: %s", err.Error())
+		}
+
+		if preGetDevice.LastSeen <= userDevice.LastSeen {
+			t.Errorf("Last seen has not been updated: %d vs %d", preGetDevice.LastSeen, userDevice.LastSeen)
+		}
+
 		getRequest, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
 		getResponse := httptest.NewRecorder()
 
@@ -339,6 +363,16 @@ func TestReadMarkV1(t *testing.T) {
 			return readMark.Encrypted == "bar"
 		}) {
 			t.Error("bar not in result")
+		}
+
+		// Also check that lastSeen has been updated
+		updatedDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+		if err != nil {
+			t.Fatalf("Got error: %s", err.Error())
+		}
+
+		if updatedDevice.LastSeen <= preGetDevice.LastSeen {
+			t.Errorf("Last seen has not been updated: %d vs %d", updatedDevice.LastSeen, preGetDevice.LastSeen)
 		}
 	})
 }

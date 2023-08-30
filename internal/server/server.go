@@ -83,6 +83,13 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	_, err = s.store.UpdateLastSeenForDevice(userDevice)
+	if err != nil {
+		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
+		http.Error(w, "Something bad happened", http.StatusInternalServerError)
+		return
+	}
+
 	switch r.Method {
 	case "GET":
 		response := GetReadmarksResponseV1{

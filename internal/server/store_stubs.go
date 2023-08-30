@@ -100,6 +100,10 @@ func (s InMemoryStore) EnsureMigration(syncCode string, deviceId int64, deviceNa
 	return 0, nil
 }
 
+func (s InMemoryStore) UpdateLastSeenForDevice(device store.UserDevice) (int64, error) {
+	return 0, errors.New("BOOM")
+}
+
 type ExplodingStore struct{}
 
 func (s ExplodingStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
@@ -128,6 +132,10 @@ func (s ExplodingStore) AddLegacyArticle(userDbId int64, identifier string) erro
 
 func (s ExplodingStore) GetLegacyDevice(syncCode string, deviceId int64) (store.UserDevice, error) {
 	return store.UserDevice{}, errors.New("BOOM")
+}
+
+func (s ExplodingStore) UpdateLastSeenForDevice(device store.UserDevice) (int64, error) {
+	return 0, errors.New("BOOM")
 }
 
 func (s ExplodingStore) Close() error {

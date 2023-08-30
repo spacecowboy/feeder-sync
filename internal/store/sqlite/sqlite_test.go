@@ -157,6 +157,37 @@ func TestStoreApi(t *testing.T) {
 			t.Fatalf("Wrong number of articles: %d", len(articles))
 		}
 	})
+
+	t.Run("Update device last seen", func(t *testing.T) {
+		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+		_, err := store.EnsureMigration(legacySyncCode, 1, "devicename")
+		if err != nil {
+			t.Fatalf("Got an error: %q", err)
+		}
+
+		userDevice, err := store.GetLegacyDevice(legacySyncCode, 1)
+		if err != nil {
+			t.Fatalf("Got an error: %q", err)
+		}
+
+		res, err := store.UpdateLastSeenForDevice(userDevice)
+		if err != nil {
+			t.Fatalf("Got an error: %q", err)
+		}
+
+		if res != 1 {
+			t.Fatalf("Expected 1, got %d", res)
+		}
+
+		updatedDevice, err := store.GetLegacyDevice(legacySyncCode, 1)
+		if err != nil {
+			t.Fatalf("Got an error: %q", err)
+		}
+
+		if updatedDevice.LastSeen <= userDevice.LastSeen {
+			t.Fatalf("New value %d is not greater than old value %d", updatedDevice.LastSeen, userDevice.LastSeen)
+		}
+	})
 }
 
 func TestMigrations(t *testing.T) {

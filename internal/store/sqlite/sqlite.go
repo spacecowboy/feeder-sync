@@ -135,7 +135,8 @@ func (s *SqliteStore) GetLegacyDevice(syncCode string, deviceId int64) (store.Us
 			device_id,
 			device_name,
 			legacy_sync_code,
-			legacy_device_id
+			legacy_device_id,
+			last_seen
 		from devices
 		inner join users on devices.user_db_id = users.db_id
 		where legacy_sync_code = ? and legacy_device_id = ?
@@ -146,7 +147,7 @@ func (s *SqliteStore) GetLegacyDevice(syncCode string, deviceId int64) (store.Us
 	)
 
 	userDevice := store.UserDevice{}
-	if err := row.Scan(&userDevice.UserDbId, &userDevice.UserId, &userDevice.DeviceId, &userDevice.DeviceName, &userDevice.LegacySyncCode, &userDevice.LegacyDeviceId); err != nil {
+	if err := row.Scan(&userDevice.UserDbId, &userDevice.UserId, &userDevice.DeviceId, &userDevice.DeviceName, &userDevice.LegacySyncCode, &userDevice.LegacyDeviceId, &userDevice.LastSeen); err != nil {
 		return userDevice, err
 	}
 
@@ -155,6 +156,29 @@ func (s *SqliteStore) GetLegacyDevice(syncCode string, deviceId int64) (store.Us
 	}
 
 	return userDevice, nil
+}
+
+func (s *SqliteStore) UpdateLastSeenForDevice(device store.UserDevice) (int64, error) {
+	result, err := s.db.Exec(
+		`
+		update devices
+		  set last_seen = ?
+			where user_db_id = ? and device_id = ?
+		`,
+		time.Now().UnixMilli(),
+		device.UserDbId,
+		device.DeviceId,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	count, err := result.RowsAffected()
+	if err != nil {
+		return count, err
+	}
+
+	return count, nil
 }
 
 func (s *SqliteStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {

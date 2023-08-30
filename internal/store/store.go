@@ -10,6 +10,7 @@ type DataStore interface {
 	AddDeviceToChain(userId uuid.UUID, deviceName string) (UserDevice, error)
 	AddDeviceToChainWithLegacy(syncCode string, deviceName string) (UserDevice, error)
 	GetLegacyDevice(syncCode string, deviceId int64) (UserDevice, error)
+	UpdateLastSeenForDevice(device UserDevice) (int64, error)
 	GetArticles(userId uuid.UUID, sinceMillis int64) ([]Article, error)
 	AddLegacyArticle(userDbId int64, identifier string) error
 	// Inserts a new user and device with the given legacy values if not already exists.
