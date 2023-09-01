@@ -42,16 +42,16 @@ type SendReadMarksRequestV1 struct {
 }
 
 type GetFeedsResponseV1 struct {
-  ContentHash int64 `json:"hash"`
-  Encrypted string `json:"encrypted"`
-};
+	ContentHash int64  `json:"hash"`
+	Encrypted   string `json:"encrypted"`
+}
 
-type UpdateFeedsRequest = {
-	ContentHash int64 `json:"contentHash"`
-	Encrypted string `json:"encrypted"`
-};
+type UpdateFeedsRequestV1 struct {
+	ContentHash int64  `json:"contentHash"`
+	Encrypted   string `json:"encrypted"`
+}
 
-type UpdateFeedsResponse = {
+type UpdateFeedsResponseV1 struct {
 	ContentHash int64 `json:"hash"`
 }
 
