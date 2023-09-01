@@ -219,6 +219,18 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" && r.Method != "POST" {
+		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	syncCode := r.Header.Get("X-FEEDER-ID")
+	if syncCode == "" {
+		log.Println("No sync code in header")
+		http.Error(w, "Missing ID", http.StatusBadRequest)
+		return
+	}
+
 	http.Error(w, "TODO", http.StatusBadRequest)
 	return
 }
