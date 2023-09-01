@@ -179,7 +179,7 @@ func TestFeedsV1(t *testing.T) {
 	// 		server := newFeederServer()
 	// 		server.ServeHTTP(response, request)
 
-	// 		if want := http.StatusOK; response.Code != want {
+	// 		if want := http.StatusNoContent; response.Code != want {
 	// 			t.Fatalf("want %d, got %d", want, response.Code)
 	// 		}
 

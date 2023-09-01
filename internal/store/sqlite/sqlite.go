@@ -291,3 +291,30 @@ func (s *SqliteStore) GetDevices(userId uuid.UUID) ([]store.UserDevice, error) {
 
 	return devices, nil
 }
+
+func (s *SqliteStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, error) {
+	row := s.db.QueryRow(
+		`
+		select
+			user_id,
+			content_hash,
+			content,
+			etag
+		from legacy_feeds
+		inner join users on legacy_feeds.user_db_id = users.db_id
+		where user_id = ?
+		`,
+		userId,
+	)
+
+	feeds := store.LegacyFeeds{}
+
+	if err := row.Scan(); err != nil {
+		if err == sql.ErrNoRows {
+			return feeds, store.ErrNoFeeds
+		} else {
+			return feeds, err
+		}
+	}
+	return feeds, nil
+}
