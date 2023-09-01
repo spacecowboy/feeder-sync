@@ -79,6 +79,118 @@ func TestJoinSyncChainV1(t *testing.T) {
 	})
 }
 
+func TestFeedsV1(t *testing.T) {
+	tempdir := t.TempDir()
+	server, err := NewSqliteServer(tempdir)
+	if err != nil {
+		t.Fatalf("It blew up %v", err.Error())
+	}
+	goodSyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+	goodDeviceId := int64(1234)
+	_, err = server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
+	if err != nil {
+		t.Fatalf("Failed to insert device: %s", err.Error())
+	}
+	userDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+	if err != nil {
+		t.Fatalf("Got error: %s", err.Error())
+	}
+
+	t.Run("Unsupported method", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodDelete, "/api/v1/feeds", nil)
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		if want := http.StatusMethodNotAllowed; response.Code != want {
+			t.Fatalf("want %d, got %d", want, response.Code)
+		}
+	})
+
+	t.Run("GET no id in header", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+		response := httptest.NewRecorder()
+
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		if want := http.StatusBadRequest; response.Code != want {
+			t.Fatalf("want %d, got %d", want, response.Code)
+		}
+	})
+
+	t.Run("GET no such device", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", "iwasdeleted")
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		if want := http.StatusBadRequest; response.Code != want {
+			t.Fatalf("want %d, got %d", want, response.Code)
+		}
+	})
+
+	t.Run("GET matching etag", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+		// TODO etag
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		if want := http.StatusNotModified; response.Code != want {
+			t.Fatalf("want %d, got %d", want, response.Code)
+		}
+	})
+
+	t.Run("POST mismatched etag", func(t *testing.T) {
+		// TODO body
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", nil)
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+		// TODO etag
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		if want := http.StatusPreconditionFailed; response.Code != want {
+			t.Fatalf("want %d, got %d", want, response.Code)
+		}
+	})
+
+	t.Run("GET and POST happy path", func(t *testing.T) {
+		// Initial get will have an empty response
+		etag := func() string {
+			request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+			response := httptest.NewRecorder()
+
+			request.Header.Add("X-FEEDER-ID", goodSyncCode)
+			request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+			// TODO etag
+			server := newFeederServer()
+			server.ServeHTTP(response, request)
+
+			if want := http.StatusOK; response.Code != want {
+				t.Fatalf("want %d, got %d", want, response.Code)
+			}
+
+			var feeds GetFeedsResponseV1 = parseGetFeedsResponseV1(t, response)
+
+			// TODO
+			return "etag"
+		}()
+	})
+}
+
 func TestReadMarkV1(t *testing.T) {
 	tempdir := t.TempDir()
 	server, err := NewSqliteServer(tempdir)
@@ -453,7 +565,7 @@ func TestCreateSyncChainV1(t *testing.T) {
 	})
 }
 
-func TestFeedsV1(t *testing.T) {
+func TestDevicesV1(t *testing.T) {
 	tempdir := t.TempDir()
 	server, err := NewSqliteServer(tempdir)
 	if err != nil {
@@ -607,6 +719,16 @@ func parseGetReadmarksResponseV1(t *testing.T, response *httptest.ResponseRecord
 
 	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
 		t.Fatalf("Unable to parse response %q into GetReadmarksResponseV1, '%v", response.Body, err)
+	}
+
+	return got
+}
+
+func parseGetFeedsResponseV1(t *testing.T, response *httptest.ResponseRecorder) GetFeedsResponseV1 {
+	var got GetFeedsResponseV1
+
+	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+		t.Fatalf("Unable to parse response %q into GetFeedsResponseV1, '%v", response.Body, err)
 	}
 
 	return got

@@ -41,6 +41,20 @@ type SendReadMarksRequestV1 struct {
 	ReadMarks []SendReadMarkV1 `json:"items"`
 }
 
+type GetFeedsResponseV1 struct {
+  ContentHash int64 `json:"hash"`
+  Encrypted string `json:"encrypted"`
+};
+
+type UpdateFeedsRequest = {
+	ContentHash int64 `json:"contentHash"`
+	Encrypted string `json:"encrypted"`
+};
+
+type UpdateFeedsResponse = {
+	ContentHash int64 `json:"hash"`
+}
+
 // V2 objects below
 
 type MigrateRequestV2 struct {
@@ -63,21 +77,3 @@ type JoinChainRequestV2 struct {
 	UserId     uuid.UUID `json:"userId"`
 	DeviceName string    `json:"deviceName"`
 }
-
-// TODO
-
-/*
-type GetFeedsResponse = {
-  hash: number;
-  encrypted: string;
-};
-
-type UpdateFeedsRequest = {
-  contentHash: number;
-  encrypted: string;
-};
-
-type UpdateFeedsResponse = {
-  hash: number;
-};
-*/

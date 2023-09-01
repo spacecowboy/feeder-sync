@@ -44,8 +44,7 @@ func NewServerWithStore(store store.DataStore) (*FeederServer, error) {
 	server.router.Handle("/api/v1/devices", http.HandlerFunc(server.handleDeviceGetV1))
 	// Ending slash is like a wildcard
 	server.router.Handle("/api/v1/devices/", http.HandlerFunc(server.handleDeviceDeleteV1))
-	// feeds
-	// server.router.Handle("/api/v1/feeds", ..)
+	server.router.Handle("/api/v1/feeds", http.HandlerFunc(server.handleFeedsV1))
 
 	return &server, nil
 }
@@ -217,6 +216,11 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 	}
 
 	log.Printf("Returned %d devices", len(devices))
+}
+
+func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "TODO", http.StatusBadRequest)
+	return
 }
 
 func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) {
