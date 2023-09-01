@@ -116,6 +116,10 @@ func (s InMemoryStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, erro
 	return store.LegacyFeeds{}, errors.New("BOOM")
 }
 
+func (s InMemoryStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag int64) (int64, error) {
+	return 0, errors.New("BOOM")
+}
+
 type ExplodingStore struct{}
 
 func (s ExplodingStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
@@ -164,6 +168,10 @@ func (s ExplodingStore) GetDevices(userId uuid.UUID) ([]store.UserDevice, error)
 
 func (s ExplodingStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, error) {
 	return store.LegacyFeeds{}, errors.New("BOOM")
+}
+
+func (s ExplodingStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag int64) (int64, error) {
+	return 0, errors.New("BOOM")
 }
 
 func NewSqliteServer(tempdir string) (*FeederServer, error) {

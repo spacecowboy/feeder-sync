@@ -18,6 +18,7 @@ type DataStore interface {
 	GetArticles(userId uuid.UUID, sinceMillis int64) ([]Article, error)
 	AddLegacyArticle(userDbId int64, identifier string) error
 	GetLegacyFeeds(userId uuid.UUID) (LegacyFeeds, error)
+	UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag int64) (int64, error)
 	// Inserts a new user and device with the given legacy values if not already exists.
 	// NOOP if already exists.
 	EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error)
@@ -46,7 +47,7 @@ type LegacyFeeds struct {
 	UserId      uuid.UUID
 	ContentHash int64
 	Content     string
-	Etag        int64
+	Etag        string
 }
 
 var ErrNoFeeds = errors.New("store: no feeds")

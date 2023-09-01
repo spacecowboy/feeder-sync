@@ -309,7 +309,7 @@ func (s *SqliteStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, error
 
 	feeds := store.LegacyFeeds{}
 
-	if err := row.Scan(); err != nil {
+	if err := row.Scan(&feeds.UserId, &feeds.ContentHash, &feeds.Content, &feeds.Etag); err != nil {
 		if err == sql.ErrNoRows {
 			return feeds, store.ErrNoFeeds
 		} else {
@@ -317,4 +317,27 @@ func (s *SqliteStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, error
 		}
 	}
 	return feeds, nil
+}
+
+func (s *SqliteStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag int64) (int64, error) {
+	result, err := s.db.Exec(
+		`
+		insert into
+		  legacy_feeds (user_db_id, content_hash, content, etag)
+			values(?, ?, ?, ?)
+			on conflict (user_db_id) do
+			  update set
+				  content_hash = excluded.content_hash,
+					content = excluded.content,
+					etag = excluded.etag
+		`,
+		userDbId,
+		contentHash,
+		content,
+		etag,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

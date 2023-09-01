@@ -181,9 +181,9 @@ func TestStoreApi(t *testing.T) {
 
 	t.Run("Feeds", func(t *testing.T) {
 		// Initial get is empty
-		_, err := sqliteStore.GetLegacyFeeds(userDevice.UserId)
+		feeds, err := sqliteStore.GetLegacyFeeds(userDevice.UserId)
 		if err == nil {
-			t.Fatalf("Expected error on first query")
+			t.Fatalf("Expected error on first query not %q", feeds)
 		} else {
 			if err != store.ErrNoFeeds {
 				t.Fatalf("Unexpected error: %s", err.Error())
@@ -191,6 +191,50 @@ func TestStoreApi(t *testing.T) {
 		}
 
 		// Add some feeds
+		count, err := sqliteStore.UpdateLegacyFeeds(
+			userDevice.UserDbId,
+			1,
+			"content",
+			99,
+		)
+		if err != nil {
+			t.Fatalf("error: %s", err.Error())
+		}
+
+		if count != 1 {
+			t.Fatalf("Count is not 1: %d", count)
+		}
+
+		// New update comes in
+		count, err = sqliteStore.UpdateLegacyFeeds(
+			userDevice.UserDbId,
+			2,
+			"content2",
+			101,
+		)
+		if err != nil {
+			t.Fatalf("error: %s", err.Error())
+		}
+
+		if count != 1 {
+			t.Fatalf("Count is not 1: %d", count)
+		}
+
+		// Now get the value
+		feeds, err = sqliteStore.GetLegacyFeeds(userDevice.UserId)
+		if err != nil {
+			t.Fatalf("Error: %s", err.Error())
+		}
+
+		if feeds.ContentHash != 2 {
+			t.Errorf("Incorrect contenthash: %d", feeds.ContentHash)
+		}
+		if feeds.Content != "content2" {
+			t.Errorf("Incorrect content: %s", feeds.Content)
+		}
+		if feeds.Etag != 101 {
+			t.Errorf("Incorrect etag: %d", feeds.Etag)
+		}
 	})
 }
 

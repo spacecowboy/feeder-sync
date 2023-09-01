@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path"
 	"strconv"
+	"strings"
 
 	"github.com/spacecowboy/feeder-sync/internal/store"
 	"github.com/spacecowboy/feeder-sync/internal/store/sqlite"
@@ -218,6 +219,20 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 	log.Printf("Returned %d devices", len(devices))
 }
 
+func matchesEtag(requestEtag string, etagValue string) bool {
+	if requestEtag == "*" {
+		return true
+	}
+
+	if requestEtag == etagValue {
+		return true
+	}
+
+	etagValueNoPrefix, _ := strings.CutPrefix(etagValue, "W/")
+
+	return requestEtag == etagValueNoPrefix
+}
+
 func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" && r.Method != "POST" {
 		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
@@ -231,8 +246,69 @@ func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Error(w, "TODO", http.StatusBadRequest)
-	return
+	legacyDeviceIdString := r.Header.Get("X-FEEDER-DEVICE-ID")
+	if legacyDeviceIdString == "" {
+		log.Println("No device id in header")
+		http.Error(w, "Missing Device ID", http.StatusBadRequest)
+		return
+	}
+	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
+	if err != nil {
+		log.Println("Device Id was not a 64 bit number")
+		http.Error(w, "Bad Device ID", http.StatusBadRequest)
+		return
+	}
+
+	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
+	if err != nil {
+		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
+		http.Error(w, "No such user or device", http.StatusBadRequest)
+		return
+	}
+
+	feeds, err := s.store.GetLegacyFeeds(userDevice.UserId)
+	if err != nil {
+		if err == store.ErrNoFeeds {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		} else {
+			log.Printf("GetLegacyFeeds error: %s", err.Error())
+			http.Error(w, "Something bad", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	switch r.Method {
+	case "GET":
+		requestEtag := r.Header.Get("If-None-Match")
+		if matchesEtag(requestEtag, feeds.Etag) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+
+		// TODO
+		//`W/"${hash}"`
+
+		response := GetFeedsResponseV1{
+			ContentHash: feeds.ContentHash,
+			Encrypted:   feeds.Content,
+		}
+
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("Could not encode feeds: %s", err.Error())
+			http.Error(w, "Could not encode response", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Add("Cache-Control", "private, must-revalidate")
+		w.Header().Add("ETag", feeds.Etag)
+	case "POST":
+		requestEtag := r.Header.Get("If-Match")
+		if !matchesEtag(requestEtag, feeds.Etag) {
+			w.WriteHeader(http.StatusPreconditionFailed)
+			return
+		}
+	}
 }
 
 func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) {
