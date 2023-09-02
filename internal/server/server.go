@@ -125,8 +125,6 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Could not encode response", http.StatusInternalServerError)
 		return
 	}
-
-	log.Printf("Returned %d devices", len(devices))
 }
 
 func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Request) {
@@ -215,8 +213,6 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "Could not encode response", http.StatusInternalServerError)
 		return
 	}
-
-	log.Printf("Returned %d devices", len(devices))
 }
 
 func matchesEtag(requestEtag string, etagValue string) bool {
@@ -455,8 +451,6 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, "Could not encode response", http.StatusInternalServerError)
 			return
 		}
-
-		log.Printf("Returned %d articles", len(articles))
 
 	case "POST":
 		if r.Body == nil {
