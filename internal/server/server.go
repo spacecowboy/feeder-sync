@@ -9,13 +9,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/felixge/httpsnoop"
 	"github.com/spacecowboy/feeder-sync/internal/store"
 	"github.com/spacecowboy/feeder-sync/internal/store/sqlite"
 )
 
 type FeederServer struct {
-	store  store.DataStore
-	router *http.ServeMux
+	store   store.DataStore
+	handler http.Handler
 }
 
 func NewServer() (*FeederServer, error) {
@@ -31,22 +32,38 @@ func NewServer() (*FeederServer, error) {
 	return NewServerWithStore(&store)
 }
 
-func NewServerWithStore(store store.DataStore) (*FeederServer, error) {
+func NewServerWithStore(dataStore store.DataStore) (*FeederServer, error) {
 	server := FeederServer{
-		store:  store,
-		router: http.NewServeMux(),
+		store: dataStore,
 	}
 
-	server.router.Handle("/api/v2/migrate", http.HandlerFunc(server.handleMigrateV2))
-	server.router.Handle("/api/v1/create", http.HandlerFunc(server.handleCreateV1))
-	server.router.Handle("/api/v2/create", http.HandlerFunc(server.handleCreateV2))
-	server.router.Handle("/api/v1/join", http.HandlerFunc(server.handleJoinV1))
-	server.router.Handle("/api/v2/join", http.HandlerFunc(server.handleJoinV2))
-	server.router.Handle("/api/v1/ereadmark", http.HandlerFunc(server.handleReadmarkV1))
-	server.router.Handle("/api/v1/devices", http.HandlerFunc(server.handleDeviceGetV1))
+	router := http.NewServeMux()
+
+	router.Handle("/api/v2/migrate", http.HandlerFunc(server.handleMigrateV2))
+	router.Handle("/api/v1/create", http.HandlerFunc(server.handleCreateV1))
+	router.Handle("/api/v2/create", http.HandlerFunc(server.handleCreateV2))
+	router.Handle("/api/v1/join", http.HandlerFunc(server.handleJoinV1))
+	router.Handle("/api/v2/join", http.HandlerFunc(server.handleJoinV2))
+	router.Handle("/api/v1/ereadmark", http.HandlerFunc(server.handleReadmarkV1))
+	router.Handle("/api/v1/devices", http.HandlerFunc(server.handleDeviceGetV1))
 	// Ending slash is like a wildcard
-	server.router.Handle("/api/v1/devices/", http.HandlerFunc(server.handleDeviceDeleteV1))
-	server.router.Handle("/api/v1/feeds", http.HandlerFunc(server.handleFeedsV1))
+	router.Handle("/api/v1/devices/", http.HandlerFunc(server.handleDeviceDeleteV1))
+	router.Handle("/api/v1/feeds", http.HandlerFunc(server.handleFeedsV1))
+
+	wrappedRouter := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		m := httpsnoop.CaptureMetrics(router, w, r)
+		log.Printf(
+			"%s %s (code=%d dt=%s written=%d)",
+			r.Method,
+			r.URL,
+			m.Code,
+			m.Duration,
+			m.Written,
+		)
+	},
+	)
+
+	server.handler = wrappedRouter
 
 	return &server, nil
 }
@@ -56,7 +73,7 @@ func (s *FeederServer) Close() error {
 }
 
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.router.ServeHTTP(w, r)
+	s.handler.ServeHTTP(w, r)
 }
 
 func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request) {

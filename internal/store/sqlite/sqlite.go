@@ -26,6 +26,8 @@ func New(dbPath string) (SqliteStore, error) {
 		return SqliteStore{}, err
 	}
 
+	db.SetMaxOpenConns(1)
+
 	return SqliteStore{
 		db: db,
 	}, nil

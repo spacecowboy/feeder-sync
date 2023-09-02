@@ -4,7 +4,6 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/felixge/httpsnoop"
 	"github.com/spacecowboy/feeder-sync/internal/server"
 )
 
@@ -19,20 +18,7 @@ func main() {
 		}
 	}()
 
-	wrappedServer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		m := httpsnoop.CaptureMetrics(server, w, r)
-		log.Printf(
-			"%s %s (code=%d dt=%s written=%d)",
-			r.Method,
-			r.URL,
-			m.Code,
-			m.Duration,
-			m.Written,
-		)
-	},
-	)
-
 	addr := ":34217"
 	log.Printf("Serving on %q", addr)
-	log.Fatal(http.ListenAndServe(addr, wrappedServer))
+	log.Fatal(http.ListenAndServe(addr, server))
 }
