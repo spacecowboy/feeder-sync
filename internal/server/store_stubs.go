@@ -116,7 +116,7 @@ func (s InMemoryStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, erro
 	return store.LegacyFeeds{}, errors.New("BOOM")
 }
 
-func (s InMemoryStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag int64) (int64, error) {
+func (s InMemoryStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag string) (int64, error) {
 	return 0, errors.New("BOOM")
 }
 
@@ -170,7 +170,7 @@ func (s ExplodingStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, err
 	return store.LegacyFeeds{}, errors.New("BOOM")
 }
 
-func (s ExplodingStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag int64) (int64, error) {
+func (s ExplodingStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag string) (int64, error) {
 	return 0, errors.New("BOOM")
 }
 

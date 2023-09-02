@@ -56,7 +56,7 @@ func TestStoreApi(t *testing.T) {
 
 		legacySyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 		wantRows = 2
-		got, err := sqliteStore.EnsureMigration(legacySyncCode, 1, "devicename")
+		got, err := sqliteStore.EnsureMigration(legacySyncCode, 66, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -66,7 +66,7 @@ func TestStoreApi(t *testing.T) {
 
 		// Add another device
 		wantRows = 1
-		got, err = sqliteStore.EnsureMigration(legacySyncCode, 2, "devicename")
+		got, err = sqliteStore.EnsureMigration(legacySyncCode, 67, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -76,7 +76,7 @@ func TestStoreApi(t *testing.T) {
 
 		// Same device again
 		wantRows = 0
-		got, err = sqliteStore.EnsureMigration(legacySyncCode, 2, "devicename")
+		got, err = sqliteStore.EnsureMigration(legacySyncCode, 67, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -85,7 +85,19 @@ func TestStoreApi(t *testing.T) {
 		}
 
 		// Ensure data is correct
-		rows, err := sqliteStore.db.Query("select device_id, legacy_device_id, device_name, last_seen, user_db_id from devices")
+		rows, err := sqliteStore.db.Query(
+			`select
+			  device_id,
+				legacy_device_id,
+				device_name,
+				last_seen,
+				user_db_id
+			from devices
+			  where legacy_device_id = ? or legacy_device_id = ?
+			`,
+			66,
+			67,
+		)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -104,7 +116,7 @@ func TestStoreApi(t *testing.T) {
 				t.Fatalf("Got an error: %s", err.Error())
 			}
 
-			if userDbId != 1 {
+			if userDbId != 2 {
 				t.Errorf("Wrong userDbId: %v", userDbId)
 			}
 			if deviceName != "devicename" {
@@ -195,7 +207,7 @@ func TestStoreApi(t *testing.T) {
 			userDevice.UserDbId,
 			1,
 			"content",
-			99,
+			"99",
 		)
 		if err != nil {
 			t.Fatalf("error: %s", err.Error())
@@ -210,7 +222,7 @@ func TestStoreApi(t *testing.T) {
 			userDevice.UserDbId,
 			2,
 			"content2",
-			101,
+			"101",
 		)
 		if err != nil {
 			t.Fatalf("error: %s", err.Error())
@@ -232,8 +244,8 @@ func TestStoreApi(t *testing.T) {
 		if feeds.Content != "content2" {
 			t.Errorf("Incorrect content: %s", feeds.Content)
 		}
-		if feeds.Etag != 101 {
-			t.Errorf("Incorrect etag: %d", feeds.Etag)
+		if feeds.Etag != "101" {
+			t.Errorf("Incorrect etag: %s", feeds.Etag)
 		}
 	})
 }

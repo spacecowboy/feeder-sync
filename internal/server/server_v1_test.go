@@ -156,6 +156,12 @@ func TestFeedsV1(t *testing.T) {
 			if want := http.StatusOK; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
 			}
+
+			var feeds UpdateFeedsResponseV1 = parseUpdateFeedsResponseV1(t, response)
+
+			if feeds.ContentHash != 1 {
+				t.Fatalf("Wrong content hash: %d", feeds.ContentHash)
+			}
 		}()
 		// Then get with no etag to get it
 		etag := func() string {
@@ -178,6 +184,16 @@ func TestFeedsV1(t *testing.T) {
 			etag := response.Header().Get("ETag")
 			if etag == "" {
 				t.Fatalf("Etag was empty")
+			}
+
+			var feeds GetFeedsResponseV1 = parseGetFeedsResponseV1(t, response)
+
+			if feeds.ContentHash != 1 {
+				t.Fatalf("Wrong content hash: %d", feeds.ContentHash)
+			}
+
+			if feeds.Encrypted != "foo" {
+				t.Fatalf("Wrong content: %s", feeds.Encrypted)
 			}
 
 			return etag
@@ -222,44 +238,172 @@ func TestFeedsV1(t *testing.T) {
 		}
 	})
 
-	// t.Run("POST mismatched etag", func(t *testing.T) {
-	// 	// TODO body
-	// 	request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", nil)
-	// 	response := httptest.NewRecorder()
+	t.Run("POST missing etag", func(t *testing.T) {
+		// First post some data
+		func() {
+			jsonBody, _ := json.Marshal(
+				UpdateFeedsRequestV1{
+					ContentHash: 1,
+					Encrypted:   "foo",
+				},
+			)
 
-	// 	request.Header.Add("X-FEEDER-ID", goodSyncCode)
-	// 	request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
-	// 	// TODO etag
-	// 	server := newFeederServer()
-	// 	server.ServeHTTP(response, request)
+			request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+			response := httptest.NewRecorder()
 
-	// 	if want := http.StatusPreconditionFailed; response.Code != want {
-	// 		t.Fatalf("want %d, got %d", want, response.Code)
-	// 	}
-	// })
+			request.Header.Add("X-FEEDER-ID", goodSyncCode)
+			request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+			server.ServeHTTP(response, request)
 
-	// t.Run("GET and POST happy path", func(t *testing.T) {
-	// 	// Initial get will have an empty response
-	// 	etag := func() string {
-	// 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
-	// 		response := httptest.NewRecorder()
+			if want := http.StatusOK; response.Code != want {
+				t.Fatalf("want %d, got %d", want, response.Code)
+			}
+		}()
 
-	// 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
-	// 		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
-	// 		// TODO etag
-	// 		server := newFeederServer()
-	// 		server.ServeHTTP(response, request)
+		jsonBody, _ := json.Marshal(
+			UpdateFeedsRequestV1{
+				ContentHash: 2,
+				Encrypted:   "bar",
+			},
+		)
 
-	// 		if want := http.StatusNoContent; response.Code != want {
-	// 			t.Fatalf("want %d, got %d", want, response.Code)
-	// 		}
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+		response := httptest.NewRecorder()
 
-	// 		var feeds GetFeedsResponseV1 = parseGetFeedsResponseV1(t, response)
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+		server.ServeHTTP(response, request)
 
-	// 		// TODO
-	// 		return "etag"
-	// 	}()
-	// })
+		if want := http.StatusPreconditionFailed; response.Code != want {
+			t.Fatalf("want %d, got %d", want, response.Code)
+		}
+	})
+
+	t.Run("POST mismatched etag", func(t *testing.T) {
+		// First post some data
+		func() {
+			jsonBody, _ := json.Marshal(
+				UpdateFeedsRequestV1{
+					ContentHash: 1,
+					Encrypted:   "foo",
+				},
+			)
+
+			request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+			response := httptest.NewRecorder()
+
+			request.Header.Add("X-FEEDER-ID", goodSyncCode)
+			request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+			server.ServeHTTP(response, request)
+
+			if want := http.StatusOK; response.Code != want {
+				t.Fatalf("want %d, got %d", want, response.Code)
+			}
+		}()
+
+		jsonBody, _ := json.Marshal(
+			UpdateFeedsRequestV1{
+				ContentHash: 2,
+				Encrypted:   "bar",
+			},
+		)
+
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+		request.Header.Add("If-Match", "W/3")
+		server.ServeHTTP(response, request)
+
+		if want := http.StatusPreconditionFailed; response.Code != want {
+			t.Fatalf("want %d, got %d", want, response.Code)
+		}
+	})
+
+	t.Run("POST matching etag", func(t *testing.T) {
+		// First post some data
+		func() {
+			jsonBody, _ := json.Marshal(
+				UpdateFeedsRequestV1{
+					ContentHash: 1,
+					Encrypted:   "foo",
+				},
+			)
+
+			request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+			response := httptest.NewRecorder()
+
+			request.Header.Add("X-FEEDER-ID", goodSyncCode)
+			request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+			server.ServeHTTP(response, request)
+
+			if want := http.StatusOK; response.Code != want {
+				t.Fatalf("want %d, got %d", want, response.Code)
+			}
+		}()
+
+		jsonBody, _ := json.Marshal(
+			UpdateFeedsRequestV1{
+				ContentHash: 2,
+				Encrypted:   "bar",
+			},
+		)
+
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+		request.Header.Add("If-Match", "W/\"1\"")
+		server.ServeHTTP(response, request)
+
+		if want := http.StatusOK; response.Code != want {
+			t.Fatalf("want %d, got %d", want, response.Code)
+		}
+	})
+
+	t.Run("POST star etag", func(t *testing.T) {
+		// First post some data
+		func() {
+			jsonBody, _ := json.Marshal(
+				UpdateFeedsRequestV1{
+					ContentHash: 1,
+					Encrypted:   "foo",
+				},
+			)
+
+			request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+			response := httptest.NewRecorder()
+
+			request.Header.Add("X-FEEDER-ID", goodSyncCode)
+			request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+			server.ServeHTTP(response, request)
+
+			if want := http.StatusOK; response.Code != want {
+				t.Fatalf("want %d, got %d", want, response.Code)
+			}
+		}()
+
+		jsonBody, _ := json.Marshal(
+			UpdateFeedsRequestV1{
+				ContentHash: 2,
+				Encrypted:   "bar",
+			},
+		)
+
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+		request.Header.Add("If-Match", "*")
+		server.ServeHTTP(response, request)
+
+		if want := http.StatusOK; response.Code != want {
+			t.Fatalf("want %d, got %d", want, response.Code)
+		}
+	})
 }
 
 func TestReadMarkV1(t *testing.T) {
@@ -800,6 +944,16 @@ func parseGetFeedsResponseV1(t *testing.T, response *httptest.ResponseRecorder) 
 
 	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
 		t.Fatalf("Unable to parse response %q into GetFeedsResponseV1, '%v", response.Body, err)
+	}
+
+	return got
+}
+
+func parseUpdateFeedsResponseV1(t *testing.T, response *httptest.ResponseRecorder) UpdateFeedsResponseV1 {
+	var got UpdateFeedsResponseV1
+
+	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+		t.Fatalf("Unable to parse response %q into UpdateFeedsResponseV1, '%v", response.Body, err)
 	}
 
 	return got

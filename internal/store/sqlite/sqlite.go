@@ -319,7 +319,7 @@ func (s *SqliteStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, error
 	return feeds, nil
 }
 
-func (s *SqliteStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag int64) (int64, error) {
+func (s *SqliteStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag string) (int64, error) {
 	result, err := s.db.Exec(
 		`
 		insert into

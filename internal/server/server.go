@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"path"
@@ -220,7 +221,7 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 }
 
 func matchesEtag(requestEtag string, etagValue string) bool {
-	if requestEtag == "*" {
+	if requestEtag == "*" || etagValue == "" {
 		return true
 	}
 
@@ -266,6 +267,22 @@ func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, err = s.store.UpdateLastSeenForDevice(userDevice)
+	if err != nil {
+		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
+		http.Error(w, "Something bad happened", http.StatusInternalServerError)
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		s.handleGetFeedsV1(userDevice, w, r)
+	case "POST":
+		s.handlePostFeedsV1(userDevice, w, r)
+	}
+}
+
+func (s *FeederServer) handleGetFeedsV1(userDevice store.UserDevice, w http.ResponseWriter, r *http.Request) {
 	feeds, err := s.store.GetLegacyFeeds(userDevice.UserId)
 	if err != nil {
 		if err == store.ErrNoFeeds {
@@ -278,37 +295,88 @@ func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	switch r.Method {
-	case "GET":
-		requestEtag := r.Header.Get("If-None-Match")
-		if matchesEtag(requestEtag, feeds.Etag) {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-
-		// TODO
-		//`W/"${hash}"`
-
-		response := GetFeedsResponseV1{
-			ContentHash: feeds.ContentHash,
-			Encrypted:   feeds.Content,
-		}
-
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			log.Printf("Could not encode feeds: %s", err.Error())
-			http.Error(w, "Could not encode response", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Add("Cache-Control", "private, must-revalidate")
-		w.Header().Add("ETag", feeds.Etag)
-	case "POST":
-		requestEtag := r.Header.Get("If-Match")
-		if !matchesEtag(requestEtag, feeds.Etag) {
-			w.WriteHeader(http.StatusPreconditionFailed)
-			return
-		}
+	requestEtag := r.Header.Get("If-None-Match")
+	if matchesEtag(requestEtag, feeds.Etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
 	}
+
+	response := GetFeedsResponseV1{
+		ContentHash: feeds.ContentHash,
+		Encrypted:   feeds.Content,
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Could not encode feeds: %s", err.Error())
+		http.Error(w, "Could not encode response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Add("Cache-Control", "private, must-revalidate")
+	w.Header().Add("ETag", feeds.Etag)
+}
+
+func (s *FeederServer) handlePostFeedsV1(userDevice store.UserDevice, w http.ResponseWriter, r *http.Request) {
+	var currentEtag string
+	feeds, err := s.store.GetLegacyFeeds(userDevice.UserId)
+	if err != nil {
+		if err == store.ErrNoFeeds {
+			currentEtag = ""
+		} else {
+			log.Printf("PostLegacyFeeds error: %s", err.Error())
+			http.Error(w, "Something bad", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		currentEtag = feeds.Etag
+	}
+
+	requestEtag := r.Header.Get("If-Match")
+	if !matchesEtag(requestEtag, currentEtag) {
+		w.WriteHeader(http.StatusPreconditionFailed)
+		return
+	}
+
+	if r.Body == nil {
+		log.Println("No body")
+		http.Error(w, "No body", http.StatusBadRequest)
+		return
+	}
+
+	var feedsRequest UpdateFeedsRequestV1
+
+	if err := json.NewDecoder(r.Body).Decode(&feedsRequest); err != nil {
+		log.Println("Bad body")
+		http.Error(w, "Bad body", http.StatusBadRequest)
+		return
+	}
+
+	_, err = s.store.UpdateLegacyFeeds(
+		userDevice.UserDbId,
+		feedsRequest.ContentHash,
+		feedsRequest.Encrypted,
+		etagValueForInt64(feedsRequest.ContentHash),
+	)
+
+	if err != nil {
+		log.Printf("Update feeds failed: %s", err.Error())
+		http.Error(w, "Something bad", http.StatusInternalServerError)
+		return
+	}
+
+	response := UpdateFeedsResponseV1{
+		ContentHash: feedsRequest.ContentHash,
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Could not encode feeds: %s", err.Error())
+		http.Error(w, "Could not encode response", http.StatusInternalServerError)
+		return
+	}
+}
+
+func etagValueForInt64(data int64) string {
+	return fmt.Sprintf("W/\"%d\"", data)
 }
 
 func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) {
