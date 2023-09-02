@@ -451,6 +451,7 @@ async function handleApiV1Request(
               const newUrl = clonedRequest.url.replace("feeder-sync", "dev")
               switch (path[0]) {
                 case "devices":
+                case "feeds":
                 case "ereadmark": {
                   await fetch(newUrl, clonedRequest)
                   break
