@@ -56,7 +56,6 @@ func (s *FeederServer) Close() error {
 }
 
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%s %s", r.Method, r.URL)
 	s.router.ServeHTTP(w, r)
 }
 
@@ -236,6 +235,7 @@ func matchesEtag(requestEtag string, etagValue string) bool {
 
 func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" && r.Method != "POST" {
+		log.Printf("Unsupported method: %s", r.Method)
 		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
 		return
 	}
