@@ -451,11 +451,40 @@ async function handleApiV1Request(
               const newUrl = clonedRequest.url.replace("feeder-sync", "dev")
               switch (path[0]) {
                 case "devices":
-                case "feeds":
                 case "ereadmark": {
                   await fetch(newUrl, clonedRequest)
                   break
                 }
+                case "feeds":
+                  switch (clonedRequest.method) {
+                    case "POST":
+                      await fetch(newUrl, clonedRequest)
+                      break
+                    case "GET":
+                      // During migration, every GET will make a POST and then a GET
+                      const feds: GetFeedsResponse = JSON.parse(await response.text())
+                      const migrateBody: UpdateFeedsRequest = {
+                        contentHash: feds.hash,
+                        encrypted: feds.encrypted,
+                      }
+
+                      const migrateHeaders: Headers = new Headers()
+
+                      migrateHeaders.append("X-FEEDER-ID", clonedRequest.headers.get("X-FEEDER-ID")!)
+                      migrateHeaders.append("X-FEEDER-DEVICE-ID", clonedRequest.headers.get("X-FEEDER-DEVICE-ID")!)
+                      migrateHeaders.append("If-Match", "*")
+
+                      const migrateFeedsRequest: RequestInit = {
+                        headers: migrateHeaders,
+                        method: "POST",
+                        body: JSON.stringify(migrateBody),
+                      }
+                      // First the post
+                      await fetch(newUrl, migrateFeedsRequest)
+                      // Then the original GET
+                      await fetch(newUrl, clonedRequest)
+                      break
+                  }
               }
             } catch (e) {
               console.log(e)
@@ -711,8 +740,9 @@ export class SyncChain {
           }
           switch (request.method) {
             case "GET": {
-              const etag = request.headers.get("If-None-Match");
-              return await this.getFeeds(etag);
+              // Disabled etag during migration
+              //const etag = request.headers.get("If-None-Match");
+              return await this.getFeeds("migrationtime");
             }
             case "POST": {
               const ifMatchHash = request.headers.get("If-Match");
