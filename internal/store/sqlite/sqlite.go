@@ -107,6 +107,9 @@ func (s *SqliteStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (sto
 	var userDbId int64
 	row := s.db.QueryRow("SELECT db_id FROM users WHERE user_id = ? limit 1", userId)
 	if err := row.Scan(&userDbId); err != nil {
+		if err == sql.ErrNoRows {
+			return store.UserDevice{}, errors.New("user not found")
+		}
 		return store.UserDevice{}, err
 	}
 
@@ -133,6 +136,9 @@ func (s *SqliteStore) AddDeviceToChainWithLegacy(syncCode string, deviceName str
 	var userDbId int64
 	row := s.db.QueryRow("SELECT db_id FROM users WHERE legacy_sync_code = ? limit 1", syncCode)
 	if err := row.Scan(&userDbId); err != nil {
+		if err == sql.ErrNoRows {
+			return store.UserDevice{}, errors.New("user not found")
+		}
 		return store.UserDevice{}, err
 	}
 

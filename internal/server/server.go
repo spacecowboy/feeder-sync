@@ -605,8 +605,8 @@ func (s *FeederServer) handleJoinV1(w http.ResponseWriter, r *http.Request) {
 	userDevice, err := s.store.AddDeviceToChainWithLegacy(syncCode, joinChainRequest.DeviceName)
 	if err != nil {
 		switch err.Error() {
-		case "No such user":
-			http.Error(w, "No such chain", http.StatusNotFound)
+		case "user not found":
+			http.Error(w, "user not found", http.StatusNotFound)
 		default:
 			http.Error(w, "Badness", http.StatusInternalServerError)
 		}

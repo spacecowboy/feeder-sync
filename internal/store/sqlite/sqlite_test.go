@@ -125,6 +125,10 @@ func TestStoreAddToChain(t *testing.T) {
 		if err == nil {
 			t.Fatalf("Expected a failure")
 		}
+
+		if got := err.Error(); got != "user not found" {
+			t.Fatalf("error should be %q, not %q", "user not found", got)
+		}
 	})
 
 	t.Run("AddDeviceToChainWithLegacy succeeds", func(t *testing.T) {
@@ -142,6 +146,10 @@ func TestStoreAddToChain(t *testing.T) {
 		_, err = sqliteStore.AddDeviceToChain(uuid.New(), "bla bla")
 		if err == nil {
 			t.Fatalf("Expected a failure")
+		}
+
+		if got := err.Error(); got != "user not found" {
+			t.Fatalf("error should be %q, not %q", "user not found", got)
 		}
 	})
 

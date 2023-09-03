@@ -13,59 +13,72 @@ import (
 )
 
 func TestJoinSyncChainV1(t *testing.T) {
-	// t.Run("Join with no body 400", func(t *testing.T) {
-	// 	request, _ := http.NewRequest(http.MethodPost, "/api/v1/join", nil)
+	tempdir := t.TempDir()
+	server, err := NewSqliteServer(tempdir)
+	if err != nil {
+		t.Fatalf("It blew up %v", err.Error())
+	}
+	defer func() {
+		if err := server.Close(); err != nil {
+			t.Fatalf("Failed to close store: %s", err.Error())
+			return
+		}
+	}()
+	goodSyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+	goodDeviceId := int64(1234)
+	_, err = server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
+	if err != nil {
+		t.Fatalf("Failed to insert device: %s", err.Error())
+	}
+	userDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+	if err != nil {
+		t.Fatalf("Got error: %s", err.Error())
+	}
 
-	// 	response := httptest.NewRecorder()
+	t.Run("Join with no body 400", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/join", nil)
+		response := httptest.NewRecorder()
 
-	// 	server := newFeederServer()
-	// 	server.ServeHTTP(response, request)
+		server.ServeHTTP(response, request)
 
-	// 	got := response.Code
-	// 	want := 400
+		got := response.Code
+		want := 400
 
-	// 	if got != want {
-	// 		t.Fatalf("want %d, got %d", want, got)
-	// 	}
-	// })
+		if got != want {
+			t.Fatalf("want %d, got %d", want, got)
+		}
+	})
 
-	// t.Run("Join with bad body 400", func(t *testing.T) {
-	// 	request, _ := http.NewRequest(http.MethodPost, "/api/v1/join", bytes.NewBufferString("Bad"))
+	t.Run("Join with bad body 400", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/join", bytes.NewBufferString("Bad"))
+		response := httptest.NewRecorder()
 
-	// 	response := httptest.NewRecorder()
+		server.ServeHTTP(response, request)
 
-	// 	server := newFeederServer()
-	// 	server.ServeHTTP(response, request)
+		got := response.Code
+		want := 400
 
-	// 	got := response.Code
-	// 	want := 400
+		if got != want {
+			t.Fatalf("want %d, got %d", want, got)
+		}
+	})
 
-	// 	if got != want {
-	// 		t.Fatalf("want %d, got %d", want, got)
-	// 	}
-	// })
+	t.Run("Joining a missing chain 404", func(t *testing.T) {
+		request := newJoinChainRequestV1(t, "ffffffffffffffffffffff", "deviceJoin")
+		response := httptest.NewRecorder()
 
-	// t.Run("Joining a missing chain 404", func(t *testing.T) {
-	// 	request := newJoinChainRequestV1(t, uuid.New(), "deviceJoin")
+		server.ServeHTTP(response, request)
 
-	// 	response := httptest.NewRecorder()
+		got := response.Code
+		want := 404
 
-	// 	server := newFeederServer()
-	// 	server.ServeHTTP(response, request)
-
-	// 	got := response.Code
-	// 	want := 404
-
-	// 	if got != want {
-	// 		t.Fatalf("want %d, got %d", want, got)
-	// 	}
-	// })
+		if got != want {
+			t.Fatalf("want %d, got %d", want, got)
+		}
+	})
 
 	t.Run("Join a sync chain works", func(t *testing.T) {
-		server := newFeederServer()
-		createResponse := createSyncChainV1(t, server)
-		request := newJoinChainRequestV1(t, createResponse.SyncCode, "deviceJoin")
-
+		request := newJoinChainRequestV1(t, userDevice.LegacySyncCode, "deviceJoin")
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -76,6 +89,25 @@ func TestJoinSyncChainV1(t *testing.T) {
 		if got != want {
 			t.Fatalf("want %d, got %d", want, got)
 		}
+
+		devices, err := server.store.GetDevices(userDevice.UserId)
+
+		if err != nil {
+			t.Fatalf(err.Error())
+		}
+
+		var found bool
+
+		for _, device := range devices {
+			if device.DeviceName == "deviceJoin" {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			t.Errorf("Joined successfully but device was not in store")
+		}
 	})
 }
 
@@ -85,6 +117,12 @@ func TestFeedsV1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("It blew up %v", err.Error())
 	}
+	defer func() {
+		if err := server.Close(); err != nil {
+			t.Fatalf("Failed to close store: %s", err.Error())
+			return
+		}
+	}()
 	goodSyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 	goodDeviceId := int64(1234)
 	_, err = server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
@@ -412,6 +450,12 @@ func TestReadMarkV1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("It blew up %v", err.Error())
 	}
+	defer func() {
+		if err := server.Close(); err != nil {
+			t.Fatalf("Failed to close store: %s", err.Error())
+			return
+		}
+	}()
 	goodSyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 	goodDeviceId := int64(1234)
 	_, err = server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
@@ -706,6 +750,18 @@ func TestReadMarkV1(t *testing.T) {
 }
 
 func TestCreateSyncChainV1(t *testing.T) {
+	tempdir := t.TempDir()
+	server, err := NewSqliteServer(tempdir)
+	if err != nil {
+		t.Fatalf("It blew up %v", err.Error())
+	}
+	defer func() {
+		if err := server.Close(); err != nil {
+			t.Fatalf("Failed to close store: %s", err.Error())
+			return
+		}
+	}()
+
 	// TODO 401 auth
 	t.Run("When create fails then 500", func(t *testing.T) {
 		request := newCreateRequestV1(t, "device1")
@@ -758,7 +814,6 @@ func TestCreateSyncChainV1(t *testing.T) {
 		request := newCreateRequestV1(t, "device1")
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -786,6 +841,12 @@ func TestDevicesV1(t *testing.T) {
 	if err != nil {
 		t.Fatalf("It blew up %v", err.Error())
 	}
+	defer func() {
+		if err := server.Close(); err != nil {
+			t.Fatalf("Failed to close store: %s", err.Error())
+			return
+		}
+	}()
 	goodSyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 	goodDeviceId := int64(1234)
 	_, err = server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
