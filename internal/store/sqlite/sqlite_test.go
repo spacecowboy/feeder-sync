@@ -93,6 +93,70 @@ func TestStoreRegister(t *testing.T) {
 	})
 }
 
+func TestStoreAddToChain(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "sqlite.db")
+	t.Logf("DB path : %s\n", dbPath)
+
+	sqliteStore, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %s", err.Error())
+	}
+
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Failed to close store: %s", err.Error())
+			return
+		}
+	}()
+
+	err = sqliteStore.RunMigrations("file://../../../migrations")
+	if err != nil {
+		t.Fatalf("Migration failed: %s", err.Error())
+	}
+
+	userDevice, err := sqliteStore.RegisterNewUser("firstDevice")
+	if err != nil {
+		t.Fatalf("Failed: %s", err.Error())
+	}
+
+	t.Run("AddDeviceToChainWithLegacy no such user fails", func(t *testing.T) {
+		_, err = sqliteStore.AddDeviceToChainWithLegacy("foo bar", "bla bla")
+		if err == nil {
+			t.Fatalf("Expected a failure")
+		}
+	})
+
+	t.Run("AddDeviceToChainWithLegacy succeeds", func(t *testing.T) {
+		device, err := sqliteStore.AddDeviceToChainWithLegacy(userDevice.LegacySyncCode, "secondDevice")
+		if err != nil {
+			t.Fatalf("failed: %s", err.Error())
+		}
+
+		if got := device.DeviceName; got != "secondDevice" {
+			t.Errorf("Wrong device name: %s", got)
+		}
+	})
+
+	t.Run("AddDeviceToChain no such user fails", func(t *testing.T) {
+		_, err = sqliteStore.AddDeviceToChain(uuid.New(), "bla bla")
+		if err == nil {
+			t.Fatalf("Expected a failure")
+		}
+	})
+
+	t.Run("AddDeviceToChain succeeds", func(t *testing.T) {
+		device, err := sqliteStore.AddDeviceToChain(userDevice.UserId, "otherDevice")
+		if err != nil {
+			t.Fatalf("failed: %s", err.Error())
+		}
+
+		if got := device.DeviceName; got != "otherDevice" {
+			t.Errorf("Wrong device name: %s", got)
+		}
+	})
+}
+
 func TestStoreApi(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "sqlite.db")

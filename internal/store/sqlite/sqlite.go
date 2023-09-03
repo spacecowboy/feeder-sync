@@ -100,8 +100,58 @@ func (s *SqliteStore) RegisterNewUser(deviceName string) (store.UserDevice, erro
 
 	userDevice.UserDbId = userDbId
 
+	return s.AddDeviceToUser(userDevice)
+}
+
+func (s *SqliteStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (store.UserDevice, error) {
+	var userDbId int64
+	row := s.db.QueryRow("SELECT db_id FROM users WHERE user_id = ? limit 1", userId)
+	if err := row.Scan(&userDbId); err != nil {
+		return store.UserDevice{}, err
+	}
+
+	legacySyncCode, err := randomLegacySyncCode()
+
+	if err != nil {
+		return store.UserDevice{}, err
+	}
+
+	userDevice := store.UserDevice{
+		UserDbId:       userDbId,
+		UserId:         uuid.New(),
+		DeviceId:       uuid.New(),
+		DeviceName:     deviceName,
+		LastSeen:       time.Now().UnixMilli(),
+		LegacySyncCode: legacySyncCode,
+		LegacyDeviceId: rand.Int63(),
+	}
+
+	return s.AddDeviceToUser(userDevice)
+}
+
+func (s *SqliteStore) AddDeviceToChainWithLegacy(syncCode string, deviceName string) (store.UserDevice, error) {
+	var userDbId int64
+	row := s.db.QueryRow("SELECT db_id FROM users WHERE legacy_sync_code = ? limit 1", syncCode)
+	if err := row.Scan(&userDbId); err != nil {
+		return store.UserDevice{}, err
+	}
+
+	userDevice := store.UserDevice{
+		UserDbId:       userDbId,
+		UserId:         uuid.New(),
+		DeviceId:       uuid.New(),
+		DeviceName:     deviceName,
+		LastSeen:       time.Now().UnixMilli(),
+		LegacySyncCode: syncCode,
+		LegacyDeviceId: rand.Int63(),
+	}
+
+	return s.AddDeviceToUser(userDevice)
+}
+
+func (s *SqliteStore) AddDeviceToUser(userDevice store.UserDevice) (store.UserDevice, error) {
 	// Insert device
-	result, err = s.db.Exec(
+	result, err := s.db.Exec(
 		"INSERT INTO devices (device_id, legacy_device_id, device_name, last_seen, user_db_id) VALUES (?, ?, ?, ?, ?)",
 		userDevice.DeviceId,
 		userDevice.LegacyDeviceId,
@@ -126,14 +176,6 @@ func (s *SqliteStore) RegisterNewUser(deviceName string) (store.UserDevice, erro
 	return userDevice, nil
 }
 
-func (s *SqliteStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (store.UserDevice, error) {
-	return store.UserDevice{}, errors.New("TODO")
-}
-
-func (s *SqliteStore) AddDeviceToChainWithLegacy(syncCode string, deviceName string) (store.UserDevice, error) {
-	return store.UserDevice{}, errors.New("TODO")
-}
-
 func (s *SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error) {
 	if len(syncCode) != 64 {
 		return 0, fmt.Errorf("Not a 64 char synccode: %q", syncCode)
@@ -150,7 +192,7 @@ func (s *SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceNam
 			return userCount + deviceCount, fmt.Errorf("insert user: %v", err)
 		}
 
-		row := s.db.QueryRow("SELECT db_id FROM users WHERE legacy_sync_code = ?", syncCode)
+		row := s.db.QueryRow("SELECT db_id FROM users WHERE legacy_sync_code = ? limit 1", syncCode)
 		if err := row.Scan(&userDbId); err != nil {
 			if err == sql.ErrNoRows {
 				return userCount + deviceCount, fmt.Errorf("no user with syncCode %q", syncCode)
