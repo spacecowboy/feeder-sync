@@ -1,10 +1,13 @@
 package sqlite
 
 import (
+	crand "crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -55,8 +58,72 @@ func (s *SqliteStore) RunMigrations(path string) error {
 	return nil
 }
 
+func randomLegacySyncCode() (string, error) {
+	bytes := make([]byte, 60)
+	if _, err := crand.Read(bytes); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("feed%s", hex.EncodeToString(bytes)), nil
+}
+
 func (s *SqliteStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
-	return store.UserDevice{}, errors.New("TODO")
+	userDevice := store.UserDevice{
+		UserId:         uuid.New(),
+		DeviceId:       uuid.New(),
+		DeviceName:     deviceName,
+		LegacyDeviceId: rand.Int63(),
+		LastSeen:       time.Now().UnixMilli(),
+	}
+
+	legacySyncCode, err := randomLegacySyncCode()
+
+	if err != nil {
+		return userDevice, err
+	}
+
+	userDevice.LegacySyncCode = legacySyncCode
+
+	// Insert user
+	result, err := s.db.Exec(
+		"INSERT INTO users (user_id, legacy_sync_code) VALUES (?, ?)",
+		userDevice.UserId,
+		userDevice.LegacySyncCode,
+	)
+	if err != nil {
+		return userDevice, err
+	}
+
+	userDbId, err := result.LastInsertId()
+	if err != nil {
+		return userDevice, err
+	}
+
+	userDevice.UserDbId = userDbId
+
+	// Insert device
+	result, err = s.db.Exec(
+		"INSERT INTO devices (device_id, legacy_device_id, device_name, last_seen, user_db_id) VALUES (?, ?, ?, ?, ?)",
+		userDevice.DeviceId,
+		userDevice.LegacyDeviceId,
+		userDevice.DeviceName,
+		userDevice.LastSeen,
+		userDevice.UserDbId,
+	)
+
+	if err != nil {
+		return userDevice, err
+	}
+
+	count, err := result.RowsAffected()
+	if err != nil {
+		return userDevice, err
+	}
+
+	if count < 1 {
+		return userDevice, errors.New(fmt.Sprintf("expected one inserted row but was %d", count))
+	}
+
+	return userDevice, nil
 }
 
 func (s *SqliteStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (store.UserDevice, error) {

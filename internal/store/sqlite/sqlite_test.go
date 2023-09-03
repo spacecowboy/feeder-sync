@@ -10,6 +10,89 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestStoreRegister(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "sqlite.db")
+	t.Logf("DB path : %s\n", dbPath)
+
+	sqliteStore, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create store: %s", err.Error())
+	}
+
+	defer func() {
+		if err := sqliteStore.Close(); err != nil {
+			t.Fatalf("Failed to close store: %s", err.Error())
+			return
+		}
+	}()
+
+	err = sqliteStore.RunMigrations("file://../../../migrations")
+	if err != nil {
+		t.Fatalf("Migration failed: %s", err.Error())
+	}
+
+	t.Run("Register new user works", func(t *testing.T) {
+		userDevice, err := sqliteStore.RegisterNewUser("devicename")
+
+		if err != nil {
+			t.Fatalf("error: %s", err.Error())
+		}
+
+		if userDevice.DeviceName != "devicename" {
+			t.Errorf("wrong device name: %s", userDevice.DeviceName)
+		}
+
+		if userDevice.DeviceId == uuid.Nil {
+			t.Errorf("bad device id: %s", userDevice.DeviceId)
+		}
+
+		if userDevice.UserId == uuid.Nil {
+			t.Errorf("bad user id: %s", userDevice.UserId)
+		}
+
+		if userDevice.LegacySyncCode == "" {
+			t.Errorf("bad LegacySyncCode id: %s", userDevice.LegacySyncCode)
+		}
+
+		if userDevice.LegacyDeviceId == 0 {
+			t.Errorf("bad LegacyDeviceId id: %d", userDevice.LegacyDeviceId)
+		}
+
+		devices, err := sqliteStore.GetDevices(userDevice.UserId)
+
+		if err != nil {
+			t.Fatalf("failed: %s", err.Error())
+		}
+
+		if got := len(devices); got != 1 {
+			t.Fatalf("wrong number of devices: %d", got)
+		}
+
+		gotDevice := devices[0]
+
+		if userDevice.DeviceName != gotDevice.DeviceName {
+			t.Errorf("wrong device name: %s", userDevice.DeviceName)
+		}
+
+		if userDevice.DeviceId != gotDevice.DeviceId {
+			t.Errorf("bad device id: %s", userDevice.DeviceId)
+		}
+
+		if userDevice.UserId != gotDevice.UserId {
+			t.Errorf("bad user id: %s", userDevice.UserId)
+		}
+
+		if userDevice.LegacySyncCode != gotDevice.LegacySyncCode {
+			t.Errorf("bad LegacySyncCode id: %s", userDevice.LegacySyncCode)
+		}
+
+		if userDevice.LegacyDeviceId != gotDevice.LegacyDeviceId {
+			t.Errorf("bad LegacyDeviceId id: %d", userDevice.LegacyDeviceId)
+		}
+	})
+}
+
 func TestStoreApi(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "sqlite.db")
@@ -43,7 +126,7 @@ func TestStoreApi(t *testing.T) {
 		t.Fatalf("Got an error: %s", err.Error())
 	}
 
-	t.Run("Invalid synccode returns error", func(t *testing.T) {
+	t.Run("Migration invalid synccode returns error", func(t *testing.T) {
 		_, err := sqliteStore.EnsureMigration("tooshort", 1, "foo")
 
 		if err == nil {
