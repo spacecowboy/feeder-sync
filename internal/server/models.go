@@ -21,7 +21,7 @@ type DeviceMessageV1 struct {
 }
 
 type DeviceListResponseV1 struct {
-	Devices []DeviceMessageV1 `json:"Devices"`
+	Devices []DeviceMessageV1 `json:"devices"`
 }
 
 type ReadMarkV1 struct {
