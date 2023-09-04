@@ -349,23 +349,23 @@ async function handleApiV1Request(
 
   switch (path[0]) {
     // Paths are entirely handled by the new server first
-    // case "create":
+    case "create":
     case "ereadmark": {
       return await fetch(devUrl, clonedRequest)
     }
-    case "create": {
-      if (request.method != "POST") {
-        return new Response("Method not allowed", { status: 405 });
-      }
-      const chainId = env.chains.newUniqueId();
-      const syncChain = env.chains.get(chainId);
+    // case "create": {
+    //   if (request.method != "POST") {
+    //     return new Response("Method not allowed", { status: 405 });
+    //   }
+    //   const chainId = env.chains.newUniqueId();
+    //   const syncChain = env.chains.get(chainId);
 
-      // Forward to the Durable Object
-      const durableObjectUrl = new URL(request.url);
-      durableObjectUrl.pathname = "/join";
+    //   // Forward to the Durable Object
+    //   const durableObjectUrl = new URL(request.url);
+    //   durableObjectUrl.pathname = "/join";
 
-      return await syncChain.fetch(`${durableObjectUrl}`, request);
-    }
+    //   return await syncChain.fetch(`${durableObjectUrl}`, request);
+    // }
     case "join":
     case "devices":
     case "readmark":
@@ -419,7 +419,9 @@ async function handleApiV1Request(
                     // Don't care about result
                     await fetch(url, init);
                   }
-                  break
+
+                  // Now let the server return the data though
+                  return await fetch(devUrl, clonedRequest)
                 }
                 default: {
                   // const devId = request.headers.get("X-FEEDER-DEVICE-ID")
@@ -456,14 +458,12 @@ async function handleApiV1Request(
               switch (path[0]) {
                 case "devices": {
                   // case "ereadmark": {
-                  await fetch(devUrl, clonedRequest)
-                  break
+                  return fetch(devUrl, clonedRequest)
                 }
                 case "feeds":
                   switch (clonedRequest.method) {
                     case "POST":
-                      await fetch(devUrl, clonedRequest)
-                      break
+                      return fetch(devUrl, clonedRequest)
                     case "GET":
                       // During migration, every GET will make a POST and then a GET
                       const feds: GetFeedsResponse = JSON.parse(await response.text())
@@ -486,8 +486,7 @@ async function handleApiV1Request(
                       // First the post
                       await fetch(devUrl, migrateFeedsRequest)
                       // Then the original GET
-                      await fetch(devUrl, clonedRequest)
-                      break
+                      return fetch(devUrl, clonedRequest)
                   }
               }
             } catch (e) {
