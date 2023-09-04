@@ -344,7 +344,15 @@ async function handleApiV1Request(
     return new Response("Missing path", { status: 404 });
   }
 
+  const clonedRequest = request.clone()
+  const devUrl = clonedRequest.url.replace("feeder-sync", "dev")
+
   switch (path[0]) {
+    // Paths are entirely handled by the new server first
+    // case "create":
+    case "ereadmark": {
+      return await fetch(devUrl, clonedRequest)
+    }
     case "create": {
       if (request.method != "POST") {
         return new Response("Method not allowed", { status: 405 });
@@ -353,38 +361,35 @@ async function handleApiV1Request(
       const syncChain = env.chains.get(chainId);
 
       // Forward to the Durable Object
-      const newUrl = new URL(request.url);
-      newUrl.pathname = "/join";
+      const durableObjectUrl = new URL(request.url);
+      durableObjectUrl.pathname = "/join";
 
-      return await syncChain.fetch(`${newUrl}`, request);
+      return await syncChain.fetch(`${durableObjectUrl}`, request);
     }
     case "join":
     case "devices":
     case "readmark":
-    case "ereadmark":
     case "feeds": {
       const name = request.headers.get("X-FEEDER-ID");
       if (!name) {
         return new Response("Missing ID", { status: 400 });
       }
 
-      let id;
-      if (name.match(/^[0-9a-f]{64}$/)) {
-        id = env.chains.idFromString(name);
-      } else {
-        return new Response("Invalid ID", { status: 400 });
-      }
-
       try {
+        let id;
+        if (name.match(/^[0-9a-f]{64}$/)) {
+          id = env.chains.idFromString(name);
+        } else {
+          return new Response("Invalid ID", { status: 400 });
+        }
+
         const syncChain = env.chains.get(id);
 
-        const clonedRequest = request.clone()
-
         // Forward to the Durable Object
-        const newUrl = new URL(request.url);
-        newUrl.pathname = "/" + path.join("/");
+        const durableObjectUrl = new URL(request.url);
+        durableObjectUrl.pathname = "/" + path.join("/");
 
-        const realResponse = await syncChain.fetch(`${newUrl}`, request);
+        const realResponse = await syncChain.fetch(`${durableObjectUrl}`, request);
 
         try {
           if (realResponse.ok || realResponse.status === 304) {
@@ -448,17 +453,16 @@ async function handleApiV1Request(
             // Real method
 
             try {
-              const newUrl = clonedRequest.url.replace("feeder-sync", "dev")
               switch (path[0]) {
-                case "devices":
-                case "ereadmark": {
-                  await fetch(newUrl, clonedRequest)
+                case "devices": {
+                  // case "ereadmark": {
+                  await fetch(devUrl, clonedRequest)
                   break
                 }
                 case "feeds":
                   switch (clonedRequest.method) {
                     case "POST":
-                      await fetch(newUrl, clonedRequest)
+                      await fetch(devUrl, clonedRequest)
                       break
                     case "GET":
                       // During migration, every GET will make a POST and then a GET
@@ -480,9 +484,9 @@ async function handleApiV1Request(
                         body: JSON.stringify(migrateBody),
                       }
                       // First the post
-                      await fetch(newUrl, migrateFeedsRequest)
+                      await fetch(devUrl, migrateFeedsRequest)
                       // Then the original GET
-                      await fetch(newUrl, clonedRequest)
+                      await fetch(devUrl, clonedRequest)
                       break
                   }
               }
@@ -496,7 +500,9 @@ async function handleApiV1Request(
         return realResponse
       } catch (e) {
         console.log(e);
-        return new Response(`No such chain`, { status: 404 });
+        // Let new server have a go at it
+        return await fetch(devUrl, clonedRequest)
+        // return new Response(`No such chain`, { status: 404 });
       }
     }
     default:
