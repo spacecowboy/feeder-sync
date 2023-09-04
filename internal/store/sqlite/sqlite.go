@@ -59,11 +59,17 @@ func (s *SqliteStore) RunMigrations(path string) error {
 }
 
 func randomLegacySyncCode() (string, error) {
-	bytes := make([]byte, 60)
+	bytes := make([]byte, 30)
 	if _, err := crand.Read(bytes); err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("feed%s", hex.EncodeToString(bytes)), nil
+	syncCode := fmt.Sprintf("feed%s", hex.EncodeToString(bytes))
+
+	if got := len(syncCode); got != 64 {
+		log.Printf("code was %d long", got)
+		return "", errors.New(fmt.Sprintf("Code was %d long not 64", got))
+	}
+	return syncCode, nil
 }
 
 func (s *SqliteStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
@@ -78,6 +84,7 @@ func (s *SqliteStore) RegisterNewUser(deviceName string) (store.UserDevice, erro
 	legacySyncCode, err := randomLegacySyncCode()
 
 	if err != nil {
+		log.Printf("could not generate sync code: %s", err.Error())
 		return userDevice, err
 	}
 
@@ -90,11 +97,13 @@ func (s *SqliteStore) RegisterNewUser(deviceName string) (store.UserDevice, erro
 		userDevice.LegacySyncCode,
 	)
 	if err != nil {
+		log.Printf("could not insert user: %s", err.Error())
 		return userDevice, err
 	}
 
 	userDbId, err := result.LastInsertId()
 	if err != nil {
+		log.Printf("could get last inserted id: %s", err.Error())
 		return userDevice, err
 	}
 
@@ -167,15 +176,18 @@ func (s *SqliteStore) AddDeviceToUser(userDevice store.UserDevice) (store.UserDe
 	)
 
 	if err != nil {
+		log.Printf("could not insert device: %s", err.Error())
 		return userDevice, err
 	}
 
 	count, err := result.RowsAffected()
 	if err != nil {
+		log.Printf("could not get rows affected: %s", err.Error())
 		return userDevice, err
 	}
 
 	if count < 1 {
+		log.Printf("wrong rows affected: %d", count)
 		return userDevice, errors.New(fmt.Sprintf("expected one inserted row but was %d", count))
 	}
 
@@ -212,7 +224,7 @@ func (s *SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceNam
 		}
 		userDbId, err = result.LastInsertId()
 		if err != nil {
-			return userCount + deviceCount, fmt.Errorf("insert user2: %v", err)
+			return userCount + deviceCount, fmt.Errorf("insert user3: %v", err)
 		}
 		log.Printf("Migrated user %s", syncCode)
 	}
@@ -229,12 +241,12 @@ func (s *SqliteStore) EnsureMigration(syncCode string, deviceId int64, deviceNam
 
 	if err != nil {
 		if !strings.Contains(err.Error(), "constraint failed: devices.user_db_id, devices.legacy_device_id") {
-			return userCount + deviceCount, fmt.Errorf("insert user: %v", err)
+			return userCount + deviceCount, fmt.Errorf("insert device: %v", err)
 		}
 	} else {
 		deviceCount, err = result.RowsAffected()
 		if err != nil {
-			return userCount + deviceCount, fmt.Errorf("insert user2: %v", err)
+			return userCount + deviceCount, fmt.Errorf("insert device2: %v", err)
 		}
 		log.Printf("Migrated device for user %d, %s", deviceId, syncCode)
 	}

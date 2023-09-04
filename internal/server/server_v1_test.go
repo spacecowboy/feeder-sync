@@ -165,7 +165,7 @@ func TestFeedsV1(t *testing.T) {
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
-		request.Header.Add("X-FEEDER-DEVICE-ID", "iwasdeleted")
+		request.Header.Add("X-FEEDER-DEVICE-ID", "0")
 		server := newFeederServer()
 		server.ServeHTTP(response, request)
 
@@ -174,7 +174,7 @@ func TestFeedsV1(t *testing.T) {
 		}
 	})
 
-	t.Run("GET matching etag", func(t *testing.T) {
+	t.Run("Whole flow with etags", func(t *testing.T) {
 		// First post some data
 		func() {
 			jsonBody, _ := json.Marshal(
@@ -262,27 +262,28 @@ func TestFeedsV1(t *testing.T) {
 			}
 		}()
 
-		// Finally with matching etag
-		request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
-		response := httptest.NewRecorder()
+		// with matching etag
+		func() {
+			request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+			response := httptest.NewRecorder()
 
-		request.Header.Add("X-FEEDER-ID", goodSyncCode)
-		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
-		request.Header.Add("If-None-Match", etag)
-		server.ServeHTTP(response, request)
+			request.Header.Add("X-FEEDER-ID", goodSyncCode)
+			request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+			request.Header.Add("If-None-Match", etag)
+			server.ServeHTTP(response, request)
 
-		if want := http.StatusNotModified; response.Code != want {
-			t.Fatalf("want %d, got %d", want, response.Code)
-		}
-	})
+			if want := http.StatusNotModified; response.Code != want {
+				t.Fatalf("want %d, got %d", want, response.Code)
+			}
+		}()
 
-	t.Run("POST missing etag", func(t *testing.T) {
-		// First post some data
+		// POSTS
+		// Then missing etag
 		func() {
 			jsonBody, _ := json.Marshal(
 				UpdateFeedsRequestV1{
-					ContentHash: 1,
-					Encrypted:   "foo",
+					ContentHash: 2,
+					Encrypted:   "bar",
 				},
 			)
 
@@ -293,37 +294,17 @@ func TestFeedsV1(t *testing.T) {
 			request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
 			server.ServeHTTP(response, request)
 
-			if want := http.StatusOK; response.Code != want {
+			if want := http.StatusPreconditionFailed; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
 			}
 		}()
 
-		jsonBody, _ := json.Marshal(
-			UpdateFeedsRequestV1{
-				ContentHash: 2,
-				Encrypted:   "bar",
-			},
-		)
-
-		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
-		response := httptest.NewRecorder()
-
-		request.Header.Add("X-FEEDER-ID", goodSyncCode)
-		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
-		server.ServeHTTP(response, request)
-
-		if want := http.StatusPreconditionFailed; response.Code != want {
-			t.Fatalf("want %d, got %d", want, response.Code)
-		}
-	})
-
-	t.Run("POST mismatched etag", func(t *testing.T) {
-		// First post some data
+		// Wrong etag
 		func() {
 			jsonBody, _ := json.Marshal(
 				UpdateFeedsRequestV1{
-					ContentHash: 1,
-					Encrypted:   "foo",
+					ContentHash: 2,
+					Encrypted:   "bar",
 				},
 			)
 
@@ -332,40 +313,20 @@ func TestFeedsV1(t *testing.T) {
 
 			request.Header.Add("X-FEEDER-ID", goodSyncCode)
 			request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+			request.Header.Add("If-Match", "W/3")
 			server.ServeHTTP(response, request)
 
-			if want := http.StatusOK; response.Code != want {
+			if want := http.StatusPreconditionFailed; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
 			}
 		}()
 
-		jsonBody, _ := json.Marshal(
-			UpdateFeedsRequestV1{
-				ContentHash: 2,
-				Encrypted:   "bar",
-			},
-		)
-
-		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
-		response := httptest.NewRecorder()
-
-		request.Header.Add("X-FEEDER-ID", goodSyncCode)
-		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
-		request.Header.Add("If-Match", "W/3")
-		server.ServeHTTP(response, request)
-
-		if want := http.StatusPreconditionFailed; response.Code != want {
-			t.Fatalf("want %d, got %d", want, response.Code)
-		}
-	})
-
-	t.Run("POST matching etag", func(t *testing.T) {
-		// First post some data
+		// Matching etag
 		func() {
 			jsonBody, _ := json.Marshal(
 				UpdateFeedsRequestV1{
-					ContentHash: 1,
-					Encrypted:   "foo",
+					ContentHash: 3,
+					Encrypted:   "foobar",
 				},
 			)
 
@@ -374,6 +335,7 @@ func TestFeedsV1(t *testing.T) {
 
 			request.Header.Add("X-FEEDER-ID", goodSyncCode)
 			request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+			request.Header.Add("If-Match", etag)
 			server.ServeHTTP(response, request)
 
 			if want := http.StatusOK; response.Code != want {
@@ -381,33 +343,12 @@ func TestFeedsV1(t *testing.T) {
 			}
 		}()
 
-		jsonBody, _ := json.Marshal(
-			UpdateFeedsRequestV1{
-				ContentHash: 2,
-				Encrypted:   "bar",
-			},
-		)
-
-		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
-		response := httptest.NewRecorder()
-
-		request.Header.Add("X-FEEDER-ID", goodSyncCode)
-		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
-		request.Header.Add("If-Match", "W/\"1\"")
-		server.ServeHTTP(response, request)
-
-		if want := http.StatusOK; response.Code != want {
-			t.Fatalf("want %d, got %d", want, response.Code)
-		}
-	})
-
-	t.Run("POST star etag", func(t *testing.T) {
-		// First post some data
+		// Star etag
 		func() {
 			jsonBody, _ := json.Marshal(
 				UpdateFeedsRequestV1{
-					ContentHash: 1,
-					Encrypted:   "foo",
+					ContentHash: 2,
+					Encrypted:   "bar",
 				},
 			)
 
@@ -416,31 +357,13 @@ func TestFeedsV1(t *testing.T) {
 
 			request.Header.Add("X-FEEDER-ID", goodSyncCode)
 			request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
+			request.Header.Add("If-Match", "*")
 			server.ServeHTTP(response, request)
 
 			if want := http.StatusOK; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
 			}
 		}()
-
-		jsonBody, _ := json.Marshal(
-			UpdateFeedsRequestV1{
-				ContentHash: 2,
-				Encrypted:   "bar",
-			},
-		)
-
-		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
-		response := httptest.NewRecorder()
-
-		request.Header.Add("X-FEEDER-ID", goodSyncCode)
-		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
-		request.Header.Add("If-Match", "*")
-		server.ServeHTTP(response, request)
-
-		if want := http.StatusOK; response.Code != want {
-			t.Fatalf("want %d, got %d", want, response.Code)
-		}
 	})
 }
 

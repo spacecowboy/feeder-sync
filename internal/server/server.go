@@ -97,7 +97,7 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 	}
 	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
 	if err != nil {
-		log.Println("Device Id was not a 64 bit number")
+		log.Printf("Device Id was not a 64 bit number: %s", legacyDeviceIdString)
 		http.Error(w, "Bad Device ID", http.StatusBadRequest)
 		return
 	}
@@ -170,7 +170,7 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 	}
 	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
 	if err != nil {
-		log.Println("Device Id was not a 64 bit number")
+		log.Printf("Device Id was not a 64 bit number: %s", legacyDeviceIdString)
 		http.Error(w, "Bad Device ID", http.StatusBadRequest)
 		return
 	}
@@ -192,7 +192,7 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 	targetLegacyDeviceIdString := path.Base(r.URL.Path)
 	targetLegacyDeviceId, err := strconv.ParseInt(targetLegacyDeviceIdString, 10, 64)
 	if err != nil {
-		log.Println("Target Device Id was not a 64 bit number")
+		log.Printf("Device Id was not a 64 bit number: %s", legacyDeviceIdString)
 		http.Error(w, "Bad Device ID", http.StatusBadRequest)
 		return
 	}
@@ -268,7 +268,7 @@ func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 	}
 	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
 	if err != nil {
-		log.Println("Device Id was not a 64 bit number")
+		log.Printf("Device Id was not a 64 bit number: %s", legacyDeviceIdString)
 		http.Error(w, "Bad Device ID", http.StatusBadRequest)
 		return
 	}
@@ -408,7 +408,7 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 	}
 	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
 	if err != nil {
-		log.Println("Device Id was not a 64 bit number")
+		log.Printf("Device Id was not a 64 bit number: %s", legacyDeviceIdString)
 		http.Error(w, "Bad Device ID", http.StatusBadRequest)
 		return
 	}
