@@ -2,13 +2,14 @@ package server
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/spacecowboy/feeder-sync/internal/store"
 	"golang.org/x/exp/slices"
 )
 
@@ -166,11 +167,17 @@ func TestFeedsV1(t *testing.T) {
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
 		request.Header.Add("X-FEEDER-DEVICE-ID", "0")
-		server := newFeederServer()
 		server.ServeHTTP(response, request)
 
 		if want := http.StatusBadRequest; response.Code != want {
 			t.Fatalf("want %d, got %d", want, response.Code)
+		}
+
+		body := string(response.Body.Bytes())
+
+		// Used by client to self-leave
+		if !strings.Contains(body, "Device not registered") {
+			t.Errorf("Missing required body so devices can leave: %q", body)
 		}
 	})
 
@@ -436,6 +443,30 @@ func TestReadMarkV1(t *testing.T) {
 		}
 	})
 
+	t.Run("GET all no such device", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", "9999999")
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 400
+
+		if gotCode1 != wantCode1 {
+			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
+		}
+
+		body := string(response.Body.Bytes())
+
+		// Used by client to self-leave
+		if !strings.Contains(body, "Device not registered") {
+			t.Errorf("Missing required body so devices can leave: %q", body)
+		}
+	})
+
 	t.Run("GET all but empty", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
 		response := httptest.NewRecorder()
@@ -587,6 +618,13 @@ func TestReadMarkV1(t *testing.T) {
 
 		if gotCode1 != wantCode1 {
 			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
+		}
+
+		body := string(response.Body.Bytes())
+
+		// Used by client to self-leave
+		if !strings.Contains(body, "Device not registered") {
+			t.Errorf("Missing required body so devices can leave: %q", body)
 		}
 	})
 
@@ -848,6 +886,52 @@ func TestDevicesV1(t *testing.T) {
 		}
 	})
 
+	t.Run("Get devices no such device", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/devices", nil)
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", "9099734")
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 400
+
+		if gotCode1 != wantCode1 {
+			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
+		}
+
+		body := string(response.Body.Bytes())
+
+		// Used by client to self-leave
+		if !strings.Contains(body, "Device not registered") {
+			t.Errorf("Missing required body so devices can leave: %q", body)
+		}
+	})
+
+	t.Run("Delete device no such device", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/devices/%d", goodDeviceId), nil)
+		response := httptest.NewRecorder()
+
+		request.Header.Add("X-FEEDER-ID", goodSyncCode)
+		request.Header.Add("X-FEEDER-DEVICE-ID", "900009999")
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 400
+
+		if gotCode1 != wantCode1 {
+			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
+		}
+
+		body := string(response.Body.Bytes())
+
+		// Used by client to self-leave
+		if !strings.Contains(body, "Device not registered") {
+			t.Errorf("Missing required body so devices can leave: %q", body)
+		}
+	})
+
 	t.Run("Delete device", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/devices/%d", goodDeviceId), nil)
 		response := httptest.NewRecorder()
@@ -869,7 +953,7 @@ func TestDevicesV1(t *testing.T) {
 		}
 
 		_, err = server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
-		if err != sql.ErrNoRows {
+		if err != store.ErrNoSuchDevice {
 			t.Errorf("Device is still in store: %q", err)
 		}
 

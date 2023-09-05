@@ -277,6 +277,9 @@ func (s *SqliteStore) GetLegacyDevice(syncCode string, deviceId int64) (store.Us
 
 	userDevice := store.UserDevice{}
 	if err := row.Scan(&userDevice.UserDbId, &userDevice.UserId, &userDevice.DeviceId, &userDevice.DeviceName, &userDevice.LegacySyncCode, &userDevice.LegacyDeviceId, &userDevice.LastSeen); err != nil {
+		if err == sql.ErrNoRows {
+			return userDevice, store.ErrNoSuchDevice
+		}
 		return userDevice, err
 	}
 

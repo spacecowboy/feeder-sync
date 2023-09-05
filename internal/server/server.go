@@ -105,7 +105,12 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
 	if err != nil {
 		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
-		http.Error(w, "No such user or device", http.StatusBadRequest)
+		if err == store.ErrNoSuchDevice {
+			// Used by clients
+			http.Error(w, DEVICE_NOT_REGISTERED, http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "Could not fetch device", http.StatusBadRequest)
 		return
 	}
 
@@ -178,7 +183,12 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
 	if err != nil {
 		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
-		http.Error(w, "No such user or device", http.StatusBadRequest)
+		if err == store.ErrNoSuchDevice {
+			// Used by clients
+			http.Error(w, DEVICE_NOT_REGISTERED, http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "Could not fetch device", http.StatusBadRequest)
 		return
 	}
 
@@ -276,7 +286,12 @@ func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
 	if err != nil {
 		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
-		http.Error(w, "No such user or device", http.StatusBadRequest)
+		if err == store.ErrNoSuchDevice {
+			// Used by clients
+			http.Error(w, DEVICE_NOT_REGISTERED, http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "Could not fetch device", http.StatusBadRequest)
 		return
 	}
 
@@ -415,8 +430,13 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 
 	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
 	if err != nil {
+		if err == store.ErrNoSuchDevice {
+			// Used by clients
+			http.Error(w, DEVICE_NOT_REGISTERED, http.StatusBadRequest)
+			return
+		}
 		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
-		http.Error(w, "No such user or device", http.StatusBadRequest)
+		http.Error(w, "Could not fetch device", http.StatusBadRequest)
 		return
 	}
 
@@ -653,3 +673,6 @@ func (s *FeederServer) handleJoinV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+// Used by clients
+var DEVICE_NOT_REGISTERED = "Device not registered"

@@ -346,6 +346,17 @@ func TestStoreApi(t *testing.T) {
 		}
 	})
 
+	t.Run("GetLegacyDevice fails no such device", func(t *testing.T) {
+		_, err := sqliteStore.GetLegacyDevice(legacySyncCode, 9999)
+		if err == nil {
+			t.Fatalf("Expected error")
+		}
+
+		if err != store.ErrNoSuchDevice {
+			t.Fatalf("Expected ErrNoSuchDevice, not: %s", err.Error())
+		}
+	})
+
 	t.Run("Feeds", func(t *testing.T) {
 		// Initial get is empty
 		feeds, err := sqliteStore.GetLegacyFeeds(userDevice.UserId)

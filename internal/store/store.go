@@ -51,3 +51,4 @@ type LegacyFeeds struct {
 }
 
 var ErrNoFeeds = errors.New("store: no feeds")
+var ErrNoSuchDevice = errors.New("store: no such device")
