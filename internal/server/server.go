@@ -615,6 +615,10 @@ func (s *FeederServer) handleCreateV1(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) handleCreateV2(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureBasicAuthOrError(w, r) {
+		return
+	}
+
 	if r.Body == nil {
 		http.Error(w, "No body", http.StatusBadRequest)
 		return
@@ -684,6 +688,10 @@ func (s *FeederServer) handleJoinV1(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) handleJoinV2(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureBasicAuthOrError(w, r) {
+		return
+	}
+
 	if r.Body == nil {
 		http.Error(w, "No body", http.StatusBadRequest)
 		return

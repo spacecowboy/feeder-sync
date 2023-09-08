@@ -102,8 +102,58 @@ func TestMigrateV2(t *testing.T) {
 }
 
 func TestJoinSyncChainV2(t *testing.T) {
+	t.Run("post missing basic auth fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v2/join", nil)
+		response := httptest.NewRecorder()
+
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("post basic auth wrong user fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v2/join", nil)
+		request.SetBasicAuth("foo", HARDCODED_PASSWORD)
+
+		response := httptest.NewRecorder()
+
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("post basic auth wrong password fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v2/join", nil)
+		request.SetBasicAuth(HARDCODED_USER, "foo")
+
+		response := httptest.NewRecorder()
+
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
 	t.Run("Join with no body 400", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v2/join", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 
 		response := httptest.NewRecorder()
 
@@ -120,6 +170,7 @@ func TestJoinSyncChainV2(t *testing.T) {
 
 	t.Run("Join with bad body 400", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v2/join", bytes.NewBufferString("Bad"))
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 
 		response := httptest.NewRecorder()
 
@@ -169,7 +220,55 @@ func TestJoinSyncChainV2(t *testing.T) {
 }
 
 func TestCreateSyncChainV2(t *testing.T) {
-	// TODO 401 auth
+	t.Run("post missing basic auth fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v2/create", nil)
+		response := httptest.NewRecorder()
+
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("post basic auth wrong user fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v2/create", nil)
+		request.SetBasicAuth("foo", HARDCODED_PASSWORD)
+
+		response := httptest.NewRecorder()
+
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("post basic auth wrong password fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v2/create", nil)
+		request.SetBasicAuth(HARDCODED_USER, "foo")
+
+		response := httptest.NewRecorder()
+
+		server := newFeederServer()
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
 	t.Run("When create fails then 500", func(t *testing.T) {
 		request := newCreateRequestV2(t, "device1", "", 0)
 		responseFirst := httptest.NewRecorder()
@@ -258,6 +357,7 @@ func TestCreateSyncChainV2(t *testing.T) {
 
 	t.Run("Create chain with no body returns 400 code", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v2/create", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server := newFeederServer()
@@ -267,12 +367,13 @@ func TestCreateSyncChainV2(t *testing.T) {
 		want := 400
 
 		if got != want {
-			t.Errorf("want %q, got %q", want, got)
+			t.Errorf("want %d, got %d", want, got)
 		}
 	})
 
 	t.Run("Create chain with garbage body returns 400 code", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v2/create", bytes.NewBufferString("foo"))
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server := newFeederServer()
@@ -282,7 +383,7 @@ func TestCreateSyncChainV2(t *testing.T) {
 		want := 400
 
 		if got != want {
-			t.Errorf("want %q, got %q", want, got)
+			t.Errorf("want %d, got %d", want, got)
 		}
 	})
 
@@ -356,6 +457,7 @@ func newCreateRequestV2(t *testing.T, deviceName string, legacyUserId string, le
 	}
 	jsonBody, _ := json.Marshal(body)
 	request, _ := http.NewRequest(http.MethodPost, "/api/v2/create", bytes.NewReader(jsonBody))
+	request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 	return request
 }
 
@@ -395,6 +497,7 @@ func newJoinChainRequestV2(t *testing.T, userId uuid.UUID, deviceName string) *h
 
 	jsonBody, _ := json.Marshal(jsonRequest)
 	result, _ := http.NewRequest(http.MethodPost, "/api/v2/join", bytes.NewReader(jsonBody))
+	result.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 	return result
 }
 
