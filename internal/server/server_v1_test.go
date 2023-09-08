@@ -66,7 +66,6 @@ func TestJoinSyncChainV1(t *testing.T) {
 		}
 	})
 
-
 	t.Run("post basic auth wrong password fails 401", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/join", nil)
 		request.SetBasicAuth(HARDCODED_USER, "foo")
@@ -140,6 +139,10 @@ func TestJoinSyncChainV1(t *testing.T) {
 
 		if got != want {
 			t.Fatalf("want %d, got %d", want, got)
+		}
+
+		if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 
 		devices, err := server.store.GetDevices(userDevice.UserId)
@@ -216,7 +219,6 @@ func TestFeedsV1(t *testing.T) {
 		}
 	})
 
-
 	t.Run("post basic auth wrong password fails 401", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", nil)
 		request.SetBasicAuth(HARDCODED_USER, "foo")
@@ -262,7 +264,6 @@ func TestFeedsV1(t *testing.T) {
 			t.Errorf("want %d, got %d", wantCode1, gotCode1)
 		}
 	})
-
 
 	t.Run("get basic auth wrong password fails 401", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
@@ -350,6 +351,9 @@ func TestFeedsV1(t *testing.T) {
 			if want := http.StatusOK; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
 			}
+			if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+				t.Errorf("Reponse is not json content-type but: %s", ct)
+			}
 
 			var feeds UpdateFeedsResponseV1 = parseUpdateFeedsResponseV1(t, response)
 
@@ -369,6 +373,9 @@ func TestFeedsV1(t *testing.T) {
 
 			if want := http.StatusOK; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
+			}
+			if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+				t.Errorf("Reponse is not json content-type but: %s", ct)
 			}
 
 			cacheControl := response.Header().Get("Cache-Control")
@@ -407,6 +414,9 @@ func TestFeedsV1(t *testing.T) {
 
 			if want := http.StatusOK; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
+			}
+			if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+				t.Errorf("Reponse is not json content-type but: %s", ct)
 			}
 
 			cacheControl := response.Header().Get("Cache-Control")
@@ -503,6 +513,9 @@ func TestFeedsV1(t *testing.T) {
 			if want := http.StatusOK; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
 			}
+			if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+				t.Errorf("Reponse is not json content-type but: %s", ct)
+			}
 		}()
 
 		// Star etag
@@ -525,6 +538,9 @@ func TestFeedsV1(t *testing.T) {
 
 			if want := http.StatusOK; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
+			}
+			if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+				t.Errorf("Reponse is not json content-type but: %s", ct)
 			}
 		}()
 	})
@@ -583,7 +599,6 @@ func TestReadMarkV1(t *testing.T) {
 		}
 	})
 
-
 	t.Run("get basic auth wrong password fails 401", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
 		request.SetBasicAuth(HARDCODED_USER, "foo")
@@ -629,7 +644,6 @@ func TestReadMarkV1(t *testing.T) {
 			t.Errorf("want %d, got %d", wantCode1, gotCode1)
 		}
 	})
-
 
 	t.Run("post basic auth wrong password fails 401", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", nil)
@@ -736,6 +750,9 @@ func TestReadMarkV1(t *testing.T) {
 
 		if gotCode1 != wantCode1 {
 			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
+		}
+		if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 
 		var readMarks GetReadmarksResponseV1 = parseGetReadmarksResponseV1(t, response)
@@ -941,6 +958,9 @@ func TestReadMarkV1(t *testing.T) {
 		if getResponse.Code != 200 {
 			t.Fatalf("want %d, got %d", 200, getResponse.Code)
 		}
+		if ct := getResponse.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Reponse is not json content-type but: %s", ct)
+		}
 
 		var readMarks GetReadmarksResponseV1 = parseGetReadmarksResponseV1(t, getResponse)
 
@@ -1025,7 +1045,6 @@ func TestCreateSyncChainV1(t *testing.T) {
 		}
 	})
 
-
 	t.Run("basic auth wrong password fails 401", func(t *testing.T) {
 		body := CreateChainRequestV1{
 			DeviceName: "foo",
@@ -1109,6 +1128,9 @@ func TestCreateSyncChainV1(t *testing.T) {
 		if gotCode1 != wantCode1 {
 			t.Errorf("want %d, got %d", wantCode1, gotCode1)
 		}
+		if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Reponse is not json content-type but: %s", ct)
+		}
 
 		var gotFirst JoinChainResponseV1 = parseCreateResponseV1(t, response)
 
@@ -1175,7 +1197,6 @@ func TestDevicesV1(t *testing.T) {
 		}
 	})
 
-
 	t.Run("get basic auth wrong password fails 401", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/devices", nil)
 		request.SetBasicAuth(HARDCODED_USER, "foo")
@@ -1222,7 +1243,6 @@ func TestDevicesV1(t *testing.T) {
 		}
 	})
 
-
 	t.Run("post basic auth wrong password fails 401", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/devices", nil)
 		request.SetBasicAuth(HARDCODED_USER, "foo")
@@ -1268,7 +1288,6 @@ func TestDevicesV1(t *testing.T) {
 			t.Errorf("want %d, got %d", wantCode1, gotCode1)
 		}
 	})
-
 
 	t.Run("delete basic auth wrong password fails 401", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodDelete, "/api/v1/devices/1", nil)
@@ -1346,6 +1365,9 @@ func TestDevicesV1(t *testing.T) {
 		if gotCode1 != wantCode1 {
 			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
 		}
+		if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Reponse is not json content-type but: %s", ct)
+		}
 
 		devices := parseDevicesResponseV1(t, response)
 		if len(devices.Devices) != 1 {
@@ -1419,6 +1441,9 @@ func TestDevicesV1(t *testing.T) {
 
 		if gotCode1 != wantCode1 {
 			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
+		}
+		if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 
 		devices := parseDevicesResponseV1(t, response)
