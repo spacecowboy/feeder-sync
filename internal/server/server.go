@@ -146,7 +146,7 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 		)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("Could not encode devices: %s", err.Error())
 		http.Error(w, "Could not encode response", http.StatusInternalServerError)
@@ -243,7 +243,7 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 			},
 		)
 	}
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("Could not encode devices: %s", err.Error())
 		http.Error(w, "Could not encode response", http.StatusInternalServerError)
@@ -347,7 +347,7 @@ func (s *FeederServer) handleGetFeedsV1(userDevice store.UserDevice, w http.Resp
 		Encrypted:   feeds.Content,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("Could not encode feeds: %s", err.Error())
 		http.Error(w, "Could not encode response", http.StatusInternalServerError)
@@ -410,7 +410,7 @@ func (s *FeederServer) handlePostFeedsV1(userDevice store.UserDevice, w http.Res
 		ContentHash: feedsRequest.ContentHash,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		log.Printf("Could not encode feeds: %s", err.Error())
 		http.Error(w, "Could not encode response", http.StatusInternalServerError)
@@ -502,7 +502,7 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 			)
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			log.Printf("Could not encode articles: %s", err.Error())
 			http.Error(w, "Could not encode response", http.StatusInternalServerError)
@@ -612,7 +612,7 @@ func (s *FeederServer) handleCreateV1(w http.ResponseWriter, r *http.Request) {
 		DeviceId: userDevice.LegacyDeviceId,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Could not encode JoinChainResponseV1", http.StatusInternalServerError)
 		return
@@ -642,7 +642,7 @@ func (s *FeederServer) handleCreateV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(userDevice); err != nil {
 		http.Error(w, "Could not encode UserDevice", http.StatusInternalServerError)
 		return
@@ -687,7 +687,7 @@ func (s *FeederServer) handleJoinV1(w http.ResponseWriter, r *http.Request) {
 		DeviceId: userDevice.LegacyDeviceId,
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		http.Error(w, "Could not encode JoinChainResponseV1", http.StatusInternalServerError)
 		return
@@ -722,7 +722,7 @@ func (s *FeederServer) handleJoinV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err := json.NewEncoder(w).Encode(userDevice); err != nil {
 		http.Error(w, "Could not encode UserDevice", http.StatusInternalServerError)
 		return

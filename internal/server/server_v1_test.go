@@ -141,7 +141,7 @@ func TestJoinSyncChainV1(t *testing.T) {
 			t.Fatalf("want %d, got %d", want, got)
 		}
 
-		if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+		if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 
@@ -351,7 +351,7 @@ func TestFeedsV1(t *testing.T) {
 			if want := http.StatusOK; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
 			}
-			if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+			if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 				t.Errorf("Reponse is not json content-type but: %s", ct)
 			}
 
@@ -374,7 +374,7 @@ func TestFeedsV1(t *testing.T) {
 			if want := http.StatusOK; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
 			}
-			if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+			if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 				t.Errorf("Reponse is not json content-type but: %s", ct)
 			}
 
@@ -415,7 +415,7 @@ func TestFeedsV1(t *testing.T) {
 			if want := http.StatusOK; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
 			}
-			if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+			if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 				t.Errorf("Reponse is not json content-type but: %s", ct)
 			}
 
@@ -513,7 +513,7 @@ func TestFeedsV1(t *testing.T) {
 			if want := http.StatusOK; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
 			}
-			if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+			if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 				t.Errorf("Reponse is not json content-type but: %s", ct)
 			}
 		}()
@@ -539,7 +539,7 @@ func TestFeedsV1(t *testing.T) {
 			if want := http.StatusOK; response.Code != want {
 				t.Fatalf("want %d, got %d", want, response.Code)
 			}
-			if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+			if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 				t.Errorf("Reponse is not json content-type but: %s", ct)
 			}
 		}()
@@ -751,7 +751,7 @@ func TestReadMarkV1(t *testing.T) {
 		if gotCode1 != wantCode1 {
 			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
 		}
-		if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+		if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 
@@ -958,7 +958,7 @@ func TestReadMarkV1(t *testing.T) {
 		if getResponse.Code != 200 {
 			t.Fatalf("want %d, got %d", 200, getResponse.Code)
 		}
-		if ct := getResponse.Header().Get("Content-Type"); ct != "application/json" {
+		if ct := getResponse.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 
@@ -1128,7 +1128,7 @@ func TestCreateSyncChainV1(t *testing.T) {
 		if gotCode1 != wantCode1 {
 			t.Errorf("want %d, got %d", wantCode1, gotCode1)
 		}
-		if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+		if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 
@@ -1365,7 +1365,7 @@ func TestDevicesV1(t *testing.T) {
 		if gotCode1 != wantCode1 {
 			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
 		}
-		if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+		if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 
@@ -1442,7 +1442,7 @@ func TestDevicesV1(t *testing.T) {
 		if gotCode1 != wantCode1 {
 			t.Fatalf("want %d, got %d", wantCode1, gotCode1)
 		}
-		if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+		if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 

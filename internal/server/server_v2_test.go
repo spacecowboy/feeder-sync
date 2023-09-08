@@ -216,7 +216,7 @@ func TestJoinSyncChainV2(t *testing.T) {
 		if got != want {
 			t.Fatalf("want %d, got %d", want, got)
 		}
-		if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+		if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 	})
@@ -302,7 +302,7 @@ func TestCreateSyncChainV2(t *testing.T) {
 		if gotCode1 != wantCode1 {
 			t.Errorf("want %d, got %d", wantCode1, gotCode1)
 		}
-		if ct := responseFirst.Header().Get("Content-Type"); ct != "application/json" {
+		if ct := responseFirst.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 
@@ -337,7 +337,7 @@ func TestCreateSyncChainV2(t *testing.T) {
 		if gotCode2 != wantCode2 {
 			t.Errorf("want %d, got %d", wantCode2, gotCode2)
 		}
-		if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+		if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 
@@ -492,7 +492,7 @@ func createSyncChainV2(t *testing.T, server *FeederServer) uuid.UUID {
 	if got != want {
 		t.Fatalf("want %d, got %d", want, got)
 	}
-	if ct := response.Header().Get("Content-Type"); ct != "application/json" {
+	if ct := response.Header().Get("Content-Type"); ct != "application/json; charset=utf-8" {
 		t.Errorf("Reponse is not json content-type but: %s", ct)
 	}
 
