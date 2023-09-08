@@ -331,182 +331,183 @@ async function handleApiV1Request(
   request: Request,
   env: EnvBinding
 ): Promise<Response> {
-  const userAndPass = basicAuthentication(request);
-  if (userAndPass == null) {
-    return new Response("Missing credentials", { status: 401 });
-  }
-
-  if (!verifyCredentials(userAndPass.user, userAndPass.pass)) {
-    return new Response("Not authorized", { status: 401 });
-  }
-
-  if (!path[0]) {
-    return new Response("Missing path", { status: 404 });
-  }
-
   const clonedRequest = request.clone()
   const devUrl = clonedRequest.url.replace("feeder-sync", "dev")
+  return fetch(devUrl, clonedRequest)
 
-  switch (path[0]) {
-    // Paths are entirely handled by the new server first
-    case "create":
-    case "ereadmark": {
-      return await fetch(devUrl, clonedRequest)
-    }
-    // case "create": {
-    //   if (request.method != "POST") {
-    //     return new Response("Method not allowed", { status: 405 });
-    //   }
-    //   const chainId = env.chains.newUniqueId();
-    //   const syncChain = env.chains.get(chainId);
+  // const userAndPass = basicAuthentication(request);
+  // if (userAndPass == null) {
+  //   return new Response("Missing credentials", { status: 401 });
+  // }
 
-    //   // Forward to the Durable Object
-    //   const durableObjectUrl = new URL(request.url);
-    //   durableObjectUrl.pathname = "/join";
+  // if (!verifyCredentials(userAndPass.user, userAndPass.pass)) {
+  //   return new Response("Not authorized", { status: 401 });
+  // }
 
-    //   return await syncChain.fetch(`${durableObjectUrl}`, request);
-    // }
-    case "join":
-    case "devices":
-    case "readmark":
-    case "feeds": {
-      const name = request.headers.get("X-FEEDER-ID");
-      if (!name) {
-        return new Response("Missing ID", { status: 400 });
-      }
+  // if (!path[0]) {
+  //   return new Response("Missing path", { status: 404 });
+  // }
 
-      try {
-        let id;
-        if (name.match(/^[0-9a-f]{64}$/)) {
-          id = env.chains.idFromString(name);
-        } else {
-          return new Response("Invalid ID", { status: 400 });
-        }
+  // switch (path[0]) {
+  //   // Paths are entirely handled by the new server first
+  //   case "create":
+  //   case "ereadmark": {
+  //     return await fetch(devUrl, clonedRequest)
+  //   }
+  //   // case "create": {
+  //   //   if (request.method != "POST") {
+  //   //     return new Response("Method not allowed", { status: 405 });
+  //   //   }
+  //   //   const chainId = env.chains.newUniqueId();
+  //   //   const syncChain = env.chains.get(chainId);
 
-        const syncChain = env.chains.get(id);
+  //   //   // Forward to the Durable Object
+  //   //   const durableObjectUrl = new URL(request.url);
+  //   //   durableObjectUrl.pathname = "/join";
 
-        // Forward to the Durable Object
-        const durableObjectUrl = new URL(request.url);
-        durableObjectUrl.pathname = "/" + path.join("/");
+  //   //   return await syncChain.fetch(`${durableObjectUrl}`, request);
+  //   // }
+  //   case "join":
+  //   case "devices":
+  //   case "readmark":
+  //   case "feeds": {
+  //     const name = request.headers.get("X-FEEDER-ID");
+  //     if (!name) {
+  //       return new Response("Missing ID", { status: 400 });
+  //     }
 
-        const realResponse = await syncChain.fetch(`${durableObjectUrl}`, request);
+  //     try {
+  //       let id;
+  //       if (name.match(/^[0-9a-f]{64}$/)) {
+  //         id = env.chains.idFromString(name);
+  //       } else {
+  //         return new Response("Invalid ID", { status: 400 });
+  //       }
 
-        try {
-          if (realResponse.ok || realResponse.status === 304) {
-            const response = realResponse.clone()
+  //       const syncChain = env.chains.get(id);
 
-            // Migration
-            try {
-              const url = "https://dev.nononsenseapps.com/api/v2/migrate";
-              switch (path[0]) {
-                case "devices": {
-                  const fump: DeviceListResponse = JSON.parse(await response.text())
+  //       // Forward to the Durable Object
+  //       const durableObjectUrl = new URL(request.url);
+  //       durableObjectUrl.pathname = "/" + path.join("/");
 
-                  for (const device of fump.devices) {
-                    const body: MigrateRequestV2 = {
-                      syncCode: name,
-                      deviceId: device.deviceId,
-                      deviceName: device.deviceName,
-                    };
-                    // jonas
-                    const init = {
-                      body: JSON.stringify(body),
-                      method: "POST",
-                      headers: {
-                        "content-type": "application/json;charset=UTF-8",
-                      },
-                    };
-                    // Don't care about result
-                    await fetch(url, init);
-                  }
+  //       const realResponse = await syncChain.fetch(`${durableObjectUrl}`, request);
 
-                  // Now let the server return the data though
-                  return await fetch(devUrl, clonedRequest)
-                }
-                default: {
-                  // const devId = request.headers.get("X-FEEDER-DEVICE-ID")
-                  // if (devId == null) {
-                  //   break
-                  // }
-                  // const deviceId = parseInt(devId);
+  //       try {
+  //         if (realResponse.ok || realResponse.status === 304) {
+  //           const response = realResponse.clone()
 
-                  // const body: MigrateRequestV2 = {
-                  //   syncCode: name,
-                  //   deviceId: deviceId,
-                  //   deviceName: "", // TODO
-                  // };
-                  // const init = {
-                  //   body: JSON.stringify(body),
-                  //   method: "POST",
-                  //   headers: {
-                  //     "content-type": "application/json;charset=UTF-8",
-                  //   },
-                  // };
-                  // // Don't care about result
-                  // console.log("Migrating JONAS")
-                  // await fetch(url, init);
+  //           // Migration
+  //           try {
+  //             const url = "https://dev.nononsenseapps.com/api/v2/migrate";
+  //             switch (path[0]) {
+  //               case "devices": {
+  //                 const fump: DeviceListResponse = JSON.parse(await response.text())
 
-                  break
-                }
-              }
-            } catch (e) {
-              console.log(e)
-            }
-            // Real method
+  //                 for (const device of fump.devices) {
+  //                   const body: MigrateRequestV2 = {
+  //                     syncCode: name,
+  //                     deviceId: device.deviceId,
+  //                     deviceName: device.deviceName,
+  //                   };
+  //                   // jonas
+  //                   const init = {
+  //                     body: JSON.stringify(body),
+  //                     method: "POST",
+  //                     headers: {
+  //                       "content-type": "application/json;charset=UTF-8",
+  //                     },
+  //                   };
+  //                   // Don't care about result
+  //                   await fetch(url, init);
+  //                 }
 
-            try {
-              switch (path[0]) {
-                case "devices": {
-                  // case "ereadmark": {
-                  return fetch(devUrl, clonedRequest)
-                }
-                case "feeds":
-                  switch (clonedRequest.method) {
-                    case "POST":
-                      return fetch(devUrl, clonedRequest)
-                    case "GET":
-                      // During migration, every GET will make a POST and then a GET
-                      const feds: GetFeedsResponse = JSON.parse(await response.text())
-                      const migrateBody: UpdateFeedsRequest = {
-                        contentHash: feds.hash,
-                        encrypted: feds.encrypted,
-                      }
+  //                 // Now let the server return the data though
+  //                 return await fetch(devUrl, clonedRequest)
+  //               }
+  //               default: {
+  //                 // const devId = request.headers.get("X-FEEDER-DEVICE-ID")
+  //                 // if (devId == null) {
+  //                 //   break
+  //                 // }
+  //                 // const deviceId = parseInt(devId);
 
-                      const migrateHeaders: Headers = new Headers()
+  //                 // const body: MigrateRequestV2 = {
+  //                 //   syncCode: name,
+  //                 //   deviceId: deviceId,
+  //                 //   deviceName: "", // TODO
+  //                 // };
+  //                 // const init = {
+  //                 //   body: JSON.stringify(body),
+  //                 //   method: "POST",
+  //                 //   headers: {
+  //                 //     "content-type": "application/json;charset=UTF-8",
+  //                 //   },
+  //                 // };
+  //                 // // Don't care about result
+  //                 // console.log("Migrating JONAS")
+  //                 // await fetch(url, init);
 
-                      migrateHeaders.append("X-FEEDER-ID", clonedRequest.headers.get("X-FEEDER-ID")!)
-                      migrateHeaders.append("X-FEEDER-DEVICE-ID", clonedRequest.headers.get("X-FEEDER-DEVICE-ID")!)
-                      migrateHeaders.append("If-Match", "*")
+  //                 break
+  //               }
+  //             }
+  //           } catch (e) {
+  //             console.log(e)
+  //           }
+  //           // Real method
 
-                      const migrateFeedsRequest: RequestInit = {
-                        headers: migrateHeaders,
-                        method: "POST",
-                        body: JSON.stringify(migrateBody),
-                      }
-                      // First the post
-                      await fetch(devUrl, migrateFeedsRequest)
-                      // Then the original GET
-                      return fetch(devUrl, clonedRequest)
-                  }
-              }
-            } catch (e) {
-              console.log(e)
-            }
-          }
-        } catch (e) {
-          console.log(e)
-        }
-        return realResponse
-      } catch (e) {
-        console.log(e);
-        // Let new server have a go at it
-        return await fetch(devUrl, clonedRequest)
-        // return new Response(`No such chain`, { status: 404 });
-      }
-    }
-    default:
-      return new Response(`Not found: ${path[0]}`, { status: 404 });
-  }
+  //           try {
+  //             switch (path[0]) {
+  //               case "devices": {
+  //                 // case "ereadmark": {
+  //                 return fetch(devUrl, clonedRequest)
+  //               }
+  //               case "feeds":
+  //                 switch (clonedRequest.method) {
+  //                   case "POST":
+  //                     return fetch(devUrl, clonedRequest)
+  //                   case "GET":
+  //                     // During migration, every GET will make a POST and then a GET
+  //                     const feds: GetFeedsResponse = JSON.parse(await response.text())
+  //                     const migrateBody: UpdateFeedsRequest = {
+  //                       contentHash: feds.hash,
+  //                       encrypted: feds.encrypted,
+  //                     }
+
+  //                     const migrateHeaders: Headers = new Headers()
+
+  //                     migrateHeaders.append("X-FEEDER-ID", clonedRequest.headers.get("X-FEEDER-ID")!)
+  //                     migrateHeaders.append("X-FEEDER-DEVICE-ID", clonedRequest.headers.get("X-FEEDER-DEVICE-ID")!)
+  //                     migrateHeaders.append("If-Match", "*")
+
+  //                     const migrateFeedsRequest: RequestInit = {
+  //                       headers: migrateHeaders,
+  //                       method: "POST",
+  //                       body: JSON.stringify(migrateBody),
+  //                     }
+  //                     // First the post
+  //                     await fetch(devUrl, migrateFeedsRequest)
+  //                     // Then the original GET
+  //                     return fetch(devUrl, clonedRequest)
+  //                 }
+  //             }
+  //           } catch (e) {
+  //             console.log(e)
+  //           }
+  //         }
+  //       } catch (e) {
+  //         console.log(e)
+  //       }
+  //       return realResponse
+  //     } catch (e) {
+  //       console.log(e);
+  //       // Let new server have a go at it
+  //       return await fetch(devUrl, clonedRequest)
+  //       // return new Response(`No such chain`, { status: 404 });
+  //     }
+  //   }
+  //   default:
+  //     return new Response(`Not found: ${path[0]}`, { status: 404 });
+  // }
 }
 
 export class SyncChain {
