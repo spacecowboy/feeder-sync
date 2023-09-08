@@ -77,6 +77,10 @@ func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureBasicAuthOrError(w, r) {
+		return
+	}
+
 	if r.Method != "GET" {
 		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
 		return
@@ -150,6 +154,10 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureBasicAuthOrError(w, r) {
+		return
+	}
+
 	if r.Method != "DELETE" {
 		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
 		return
@@ -257,6 +265,10 @@ func matchesEtag(requestEtag string, etagValue string) bool {
 }
 
 func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureBasicAuthOrError(w, r) {
+		return
+	}
+
 	if r.Method != "GET" && r.Method != "POST" {
 		log.Printf("Unsupported method: %s", r.Method)
 		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
@@ -408,6 +420,10 @@ func etagValueForInt64(data int64) string {
 }
 
 func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureBasicAuthOrError(w, r) {
+		return
+	}
+
 	syncCode := r.Header.Get("X-FEEDER-ID")
 	if syncCode == "" {
 		log.Println("No sync code in header")
@@ -549,7 +565,26 @@ func (s *FeederServer) handleMigrateV2(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *FeederServer) ensureBasicAuthOrError(w http.ResponseWriter, r *http.Request) bool {
+	username, password, ok := r.BasicAuth()
+	if !ok {
+		http.Error(w, "Missing auth", http.StatusUnauthorized)
+		return false
+	}
+
+	if username != HARDCODED_USER || password != HARDCODED_PASSWORD {
+		http.Error(w, "Bad auth", http.StatusUnauthorized)
+		return false
+	}
+
+	return true
+}
+
 func (s *FeederServer) handleCreateV1(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureBasicAuthOrError(w, r) {
+		return
+	}
+
 	if r.Body == nil {
 		http.Error(w, "No body", http.StatusBadRequest)
 		return
@@ -605,6 +640,10 @@ func (s *FeederServer) handleCreateV2(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) handleJoinV1(w http.ResponseWriter, r *http.Request) {
+	if !s.ensureBasicAuthOrError(w, r) {
+		return
+	}
+
 	if r.Body == nil {
 		http.Error(w, "No body", http.StatusBadRequest)
 		return
@@ -676,3 +715,7 @@ func (s *FeederServer) handleJoinV2(w http.ResponseWriter, r *http.Request) {
 
 // Used by clients
 var DEVICE_NOT_REGISTERED = "Device not registered"
+
+// Used internally
+var HARDCODED_USER = "feeder_user"
+var HARDCODED_PASSWORD = "feeder_secret_1234"

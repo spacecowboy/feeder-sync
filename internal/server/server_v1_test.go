@@ -36,8 +36,56 @@ func TestJoinSyncChainV1(t *testing.T) {
 		t.Fatalf("Got error: %s", err.Error())
 	}
 
+	t.Run("post missing basic auth fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/join", nil)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("post basic auth wrong user fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/join", nil)
+		request.SetBasicAuth("foo", HARDCODED_PASSWORD)
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+
+	t.Run("post basic auth wrong password fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/join", nil)
+		request.SetBasicAuth(HARDCODED_USER, "foo")
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
 	t.Run("Join with no body 400", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/join", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -52,6 +100,7 @@ func TestJoinSyncChainV1(t *testing.T) {
 
 	t.Run("Join with bad body 400", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/join", bytes.NewBufferString("Bad"))
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -66,6 +115,7 @@ func TestJoinSyncChainV1(t *testing.T) {
 
 	t.Run("Joining a missing chain 404", func(t *testing.T) {
 		request := newJoinChainRequestV1(t, "ffffffffffffffffffffff", "deviceJoin")
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -80,6 +130,7 @@ func TestJoinSyncChainV1(t *testing.T) {
 
 	t.Run("Join a sync chain works", func(t *testing.T) {
 		request := newJoinChainRequestV1(t, userDevice.LegacySyncCode, "deviceJoin")
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -135,8 +186,103 @@ func TestFeedsV1(t *testing.T) {
 		t.Fatalf("Got error: %s", err.Error())
 	}
 
+	t.Run("post missing basic auth fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", nil)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("post basic auth wrong user fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", nil)
+		request.SetBasicAuth("foo", HARDCODED_PASSWORD)
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+
+	t.Run("post basic auth wrong password fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", nil)
+		request.SetBasicAuth(HARDCODED_USER, "foo")
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("get missing basic auth fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("get basic auth wrong user fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+		request.SetBasicAuth("foo", HARDCODED_PASSWORD)
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+
+	t.Run("get basic auth wrong password fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+		request.SetBasicAuth(HARDCODED_USER, "foo")
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
 	t.Run("Unsupported method", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodDelete, "/api/v1/feeds", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -151,6 +297,7 @@ func TestFeedsV1(t *testing.T) {
 
 	t.Run("GET no id in header", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server := newFeederServer()
@@ -163,6 +310,7 @@ func TestFeedsV1(t *testing.T) {
 
 	t.Run("GET no such device", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -192,6 +340,7 @@ func TestFeedsV1(t *testing.T) {
 			)
 
 			request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+			request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 			response := httptest.NewRecorder()
 
 			request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -211,6 +360,7 @@ func TestFeedsV1(t *testing.T) {
 		// Then get with no etag to get it
 		etag := func() string {
 			request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+			request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 			response := httptest.NewRecorder()
 
 			request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -247,6 +397,7 @@ func TestFeedsV1(t *testing.T) {
 		// Also try with bad etag
 		func() {
 			request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+			request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 			response := httptest.NewRecorder()
 
 			request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -272,6 +423,7 @@ func TestFeedsV1(t *testing.T) {
 		// with matching etag
 		func() {
 			request, _ := http.NewRequest(http.MethodGet, "/api/v1/feeds", nil)
+			request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 			response := httptest.NewRecorder()
 
 			request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -295,6 +447,7 @@ func TestFeedsV1(t *testing.T) {
 			)
 
 			request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+			request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 			response := httptest.NewRecorder()
 
 			request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -316,6 +469,7 @@ func TestFeedsV1(t *testing.T) {
 			)
 
 			request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+			request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 			response := httptest.NewRecorder()
 
 			request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -338,6 +492,7 @@ func TestFeedsV1(t *testing.T) {
 			)
 
 			request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+			request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 			response := httptest.NewRecorder()
 
 			request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -360,6 +515,7 @@ func TestFeedsV1(t *testing.T) {
 			)
 
 			request, _ := http.NewRequest(http.MethodPost, "/api/v1/feeds", bytes.NewReader(jsonBody))
+			request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 			response := httptest.NewRecorder()
 
 			request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -397,8 +553,103 @@ func TestReadMarkV1(t *testing.T) {
 		t.Fatalf("Got error: %s", err.Error())
 	}
 
+	t.Run("get missing basic auth fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("get basic auth wrong user fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		request.SetBasicAuth("foo", HARDCODED_PASSWORD)
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+
+	t.Run("get basic auth wrong password fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		request.SetBasicAuth(HARDCODED_USER, "foo")
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("post missing basic auth fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", nil)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("post basic auth wrong user fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", nil)
+		request.SetBasicAuth("foo", HARDCODED_PASSWORD)
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+
+	t.Run("post basic auth wrong password fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", nil)
+		request.SetBasicAuth(HARDCODED_USER, "foo")
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
 	t.Run("Unsupported method", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodDelete, "/api/v1/ereadmark", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server := newFeederServer()
@@ -414,6 +665,7 @@ func TestReadMarkV1(t *testing.T) {
 
 	t.Run("GET no id in header", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server := newFeederServer()
@@ -429,6 +681,7 @@ func TestReadMarkV1(t *testing.T) {
 
 	t.Run("GET all no such user", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", "somebadcode")
@@ -445,6 +698,7 @@ func TestReadMarkV1(t *testing.T) {
 
 	t.Run("GET all no such device", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -469,6 +723,7 @@ func TestReadMarkV1(t *testing.T) {
 
 	t.Run("GET all but empty", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -492,6 +747,7 @@ func TestReadMarkV1(t *testing.T) {
 
 	t.Run("POST no body", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -513,6 +769,7 @@ func TestReadMarkV1(t *testing.T) {
 		jsonBody, _ := json.Marshal(jsonRequest)
 
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -552,6 +809,7 @@ func TestReadMarkV1(t *testing.T) {
 		jsonBody, _ := json.Marshal(jsonRequest)
 
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -579,6 +837,7 @@ func TestReadMarkV1(t *testing.T) {
 		jsonBody, _ := json.Marshal(jsonRequest)
 
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -607,6 +866,7 @@ func TestReadMarkV1(t *testing.T) {
 		jsonBody, _ := json.Marshal(jsonRequest)
 
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -646,6 +906,7 @@ func TestReadMarkV1(t *testing.T) {
 		jsonBody, _ := json.Marshal(jsonRequest)
 
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/ereadmark", bytes.NewReader(jsonBody))
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -670,6 +931,7 @@ func TestReadMarkV1(t *testing.T) {
 		}
 
 		getRequest, _ := http.NewRequest(http.MethodGet, "/api/v1/ereadmark", nil)
+		getRequest.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		getResponse := httptest.NewRecorder()
 
 		getRequest.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -723,10 +985,72 @@ func TestCreateSyncChainV1(t *testing.T) {
 		}
 	}()
 
-	// TODO 401 auth
+	t.Run("Missing basic auth fails 401", func(t *testing.T) {
+		body := CreateChainRequestV1{
+			DeviceName: "foo",
+		}
+		jsonBody, _ := json.Marshal(body)
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/create", bytes.NewReader(jsonBody))
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("basic auth wrong user fails 401", func(t *testing.T) {
+		body := CreateChainRequestV1{
+			DeviceName: "foo",
+		}
+		jsonBody, _ := json.Marshal(body)
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/create", bytes.NewReader(jsonBody))
+
+		request.SetBasicAuth("foo", HARDCODED_PASSWORD)
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+
+	t.Run("basic auth wrong password fails 401", func(t *testing.T) {
+		body := CreateChainRequestV1{
+			DeviceName: "foo",
+		}
+		jsonBody, _ := json.Marshal(body)
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/create", bytes.NewReader(jsonBody))
+
+		request.SetBasicAuth(HARDCODED_USER, "foo")
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
 	t.Run("When create fails then 500", func(t *testing.T) {
 		request := newCreateRequestV1(t, "device1")
 		responseFirst := httptest.NewRecorder()
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 
 		server, _ := NewServerWithStore(
 			ExplodingStore{},
@@ -744,6 +1068,7 @@ func TestCreateSyncChainV1(t *testing.T) {
 	t.Run("V1 Create chain with no body returns 400 code", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/create", nil)
 		response := httptest.NewRecorder()
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 
 		server := newFeederServer()
 		server.ServeHTTP(response, request)
@@ -759,6 +1084,7 @@ func TestCreateSyncChainV1(t *testing.T) {
 	t.Run("V1 Create chain with garbage body returns 400 code", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v1/create", bytes.NewBufferString("foo"))
 		response := httptest.NewRecorder()
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 
 		server := newFeederServer()
 		server.ServeHTTP(response, request)
@@ -819,8 +1145,150 @@ func TestDevicesV1(t *testing.T) {
 		t.Fatalf("Got error: %s", err.Error())
 	}
 
+	t.Run("get missing basic auth fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/devices", nil)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("get basic auth wrong user fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/devices", nil)
+		request.SetBasicAuth("foo", HARDCODED_PASSWORD)
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+
+	t.Run("get basic auth wrong password fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodGet, "/api/v1/devices", nil)
+		request.SetBasicAuth(HARDCODED_USER, "foo")
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("post missing basic auth fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/devices", nil)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("post basic auth wrong user fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/devices", nil)
+		request.SetBasicAuth("foo", HARDCODED_PASSWORD)
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+
+	t.Run("post basic auth wrong password fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodPost, "/api/v1/devices", nil)
+		request.SetBasicAuth(HARDCODED_USER, "foo")
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("delete missing basic auth fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodDelete, "/api/v1/devices/1", nil)
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+	t.Run("delete basic auth wrong user fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodDelete, "/api/v1/devices/1", nil)
+		request.SetBasicAuth("foo", HARDCODED_PASSWORD)
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
+
+	t.Run("delete basic auth wrong password fails 401", func(t *testing.T) {
+		request, _ := http.NewRequest(http.MethodDelete, "/api/v1/devices/1", nil)
+		request.SetBasicAuth(HARDCODED_USER, "foo")
+
+		response := httptest.NewRecorder()
+
+		server.ServeHTTP(response, request)
+
+		gotCode1 := response.Code
+		wantCode1 := 401
+
+		if gotCode1 != wantCode1 {
+			t.Errorf("want %d, got %d", wantCode1, gotCode1)
+		}
+	})
+
 	t.Run("Unsupported method DELETE handler", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/devices/%d", goodDeviceId), nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -835,6 +1303,7 @@ func TestDevicesV1(t *testing.T) {
 
 	t.Run("Uknown path", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/devices/foo/%d", goodDeviceId), nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -849,6 +1318,7 @@ func TestDevicesV1(t *testing.T) {
 
 	t.Run("Unsupported method GET handler", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodDelete, "/api/v1/devices", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		server.ServeHTTP(response, request)
@@ -863,6 +1333,7 @@ func TestDevicesV1(t *testing.T) {
 
 	t.Run("Get devices", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/devices", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -888,6 +1359,7 @@ func TestDevicesV1(t *testing.T) {
 
 	t.Run("Get devices no such device", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodGet, "/api/v1/devices", nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -911,6 +1383,7 @@ func TestDevicesV1(t *testing.T) {
 
 	t.Run("Delete device no such device", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/devices/%d", goodDeviceId), nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -934,6 +1407,7 @@ func TestDevicesV1(t *testing.T) {
 
 	t.Run("Delete device", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/devices/%d", goodDeviceId), nil)
+		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
@@ -974,6 +1448,7 @@ func newCreateRequestV1(t *testing.T, deviceName string) *http.Request {
 	}
 	jsonBody, _ := json.Marshal(body)
 	request, _ := http.NewRequest(http.MethodPost, "/api/v1/create", bytes.NewReader(jsonBody))
+	request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 	return request
 }
 
@@ -1029,6 +1504,7 @@ func parseUpdateFeedsResponseV1(t *testing.T, response *httptest.ResponseRecorde
 
 func createSyncChainV1(t *testing.T, server *FeederServer) JoinChainResponseV1 {
 	request := newCreateRequestV1(t, "device1")
+	request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 	response := httptest.NewRecorder()
 
 	server.ServeHTTP(response, request)
@@ -1054,5 +1530,6 @@ func newJoinChainRequestV1(t *testing.T, syncCode string, deviceName string) *ht
 	result, _ := http.NewRequest(http.MethodPost, "/api/v1/join", bytes.NewReader(jsonBody))
 
 	result.Header.Add("X-FEEDER-ID", syncCode)
+	result.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 	return result
 }
