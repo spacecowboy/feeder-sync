@@ -17,8 +17,7 @@ Disallow: /"
 	respond "Go away" 404
 }
 
-# feeder-sync.nononsenseapps.com
-dev.nononsenseapps.com {
+feeder-sync.nononsenseapps.com, feederapp.nononsenseapps.com, dev.nononsenseapps.com {
 	reverse_proxy /api/* localhost:34217
 	root * /var/www/feeder-sync.nononsenseapps.com
 	file_server
