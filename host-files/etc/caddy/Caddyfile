@@ -17,19 +17,11 @@ Disallow: /"
 	respond "Go away" 404
 }
 
+# feeder-sync.nononsenseapps.com
 dev.nononsenseapps.com {
-	handle /api/* {
-		reverse_proxy localhost:34217
-	}
-	handle /robots.txt {
-		respond 200 {
-			body "User-agent: *
-Disallow: /"
-		}
-	}
-	handle {
-		respond "Go away" 404
-	}
+	reverse_proxy /api/* localhost:34217
+	root * /var/www/feeder-sync.nononsenseapps.com
+	file_server
 	log {
 	}
 }
