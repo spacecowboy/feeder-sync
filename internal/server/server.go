@@ -11,6 +11,7 @@ import (
 
 	"github.com/felixge/httpsnoop"
 	"github.com/spacecowboy/feeder-sync/internal/store"
+	"github.com/spacecowboy/feeder-sync/internal/store/postgres"
 	"github.com/spacecowboy/feeder-sync/internal/store/sqlite"
 )
 
@@ -19,13 +20,26 @@ type FeederServer struct {
 	handler http.Handler
 }
 
-func NewServer() (*FeederServer, error) {
+func NewServerWithSqlite() (*FeederServer, error) {
 	store, err := sqlite.New("./sqlite.db")
 	if err != nil {
 		return nil, err
 	}
 
-	if err := store.RunMigrations("file://./migrations"); err != nil {
+	if err := store.RunMigrations("file://./migrations_sqlite"); err != nil {
+		return nil, err
+	}
+
+	return NewServerWithStore(&store)
+}
+
+func NewServerWithPostgres(conn string) (*FeederServer, error) {
+	store, err := postgres.New(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := store.RunMigrations("file://./migrations_postgres"); err != nil {
 		return nil, err
 	}
 

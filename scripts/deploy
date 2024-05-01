@@ -12,7 +12,8 @@ ssh "$USER@$HOST" mkdir -p "$STATE_DIR"
 
 scp "out/$BINARY_NAME" "$USER@$HOST:$BINARY_DIR"
 rsync -vzr --progress host-files/ "$USER@$HOST:/"
-scp -r "migrations" "$USER@$HOST:$STATE_DIR"
+scp -r "migrations_sqlite" "$USER@$HOST:$STATE_DIR"
+scp -r "migrations_postgres" "$USER@$HOST:$STATE_DIR"
 
 ssh "$USER@$HOST" chown -R feeder:feeder "$STATE_DIR"
 

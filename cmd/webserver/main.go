@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	server, err := server.NewServer()
+	server, err := server.NewServerWithSqlite()
 	if err != nil {
 		log.Fatalf("Failed to create server: %q", err)
 	}

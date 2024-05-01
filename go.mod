@@ -5,8 +5,14 @@ go 1.21.0
 require (
 	github.com/golang-migrate/migrate/v4 v4.16.2
 	github.com/google/uuid v1.3.0
-	golang.org/x/exp v0.0.0-20230315142452-642cacee5cc0
+	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
 	modernc.org/sqlite v1.25.0
+)
+
+require (
+	github.com/lib/pq v1.10.9 // indirect
+	github.com/peterldowns/pgtestdb v0.0.14 // indirect
+	github.com/peterldowns/pgtestdb/migrators/golangmigrator v0.0.14 // indirect
 )
 
 require (
@@ -18,7 +24,7 @@ require (
 	github.com/mattn/go-isatty v0.0.16 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	go.uber.org/atomic v1.7.0 // indirect
-	golang.org/x/mod v0.10.0 // indirect
+	golang.org/x/mod v0.11.0 // indirect
 	golang.org/x/sys v0.8.0 // indirect
 	golang.org/x/tools v0.9.1 // indirect
 	lukechampine.com/uint128 v1.2.0 // indirect

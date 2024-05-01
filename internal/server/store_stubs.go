@@ -180,7 +180,7 @@ func NewSqliteServer(tempdir string) (*FeederServer, error) {
 		return nil, err
 	}
 
-	if err := store.RunMigrations("file://../../migrations"); err != nil {
+	if err := store.RunMigrations("file://../../migrations_sqlite"); err != nil {
 		return nil, err
 	}
 

@@ -1,39 +1,40 @@
-package sqlite
+package postgres
 
 import (
-	"path/filepath"
+	"database/sql"
 	"testing"
 
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
+	_ "github.com/lib/pq"
+	"github.com/peterldowns/pgtestdb"
+	"github.com/peterldowns/pgtestdb/migrators/golangmigrator"
 	"github.com/spacecowboy/feeder-sync/internal/store"
-	_ "modernc.org/sqlite"
 )
 
+// NewDB is a helper that returns an open connection to a unique and isolated
+// test database, fully migrated and ready for you to query.
+func NewDB(t *testing.T) *sql.DB {
+	t.Helper()
+	conf := pgtestdb.Config{
+		DriverName: "postgres",
+		User:       "postgres",
+		Password:   "password",
+		Host:       "localhost",
+		Port:       "55432",
+		Options:    "sslmode=disable",
+	}
+	migrator := golangmigrator.New("../../../migrations_postgres")
+
+	return pgtestdb.New(t, conf, migrator)
+}
+
 func TestStoreRegister(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "sqlite.db")
-	t.Logf("DB path : %s\n", dbPath)
-
-	sqliteStore, err := New(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %s", err.Error())
-	}
-
-	defer func() {
-		if err := sqliteStore.Close(); err != nil {
-			t.Fatalf("Failed to close store: %s", err.Error())
-			return
-		}
-	}()
-
-	err = sqliteStore.RunMigrations("file://../../../migrations_sqlite")
-	if err != nil {
-		t.Fatalf("Migration failed: %s", err.Error())
-	}
+	db := NewDB(t)
+	defer db.Close()
 
 	t.Run("Register new user works", func(t *testing.T) {
-		userDevice, err := sqliteStore.RegisterNewUser("devicename")
+		userDevice, err := RegisterNewUser(db, "devicename")
 
 		if err != nil {
 			t.Fatalf("error: %s", err.Error())
@@ -59,7 +60,7 @@ func TestStoreRegister(t *testing.T) {
 			t.Errorf("bad LegacyDeviceId id: %d", userDevice.LegacyDeviceId)
 		}
 
-		devices, err := sqliteStore.GetDevices(userDevice.UserId)
+		devices, err := GetDevices(db, userDevice.UserId)
 
 		if err != nil {
 			t.Fatalf("failed: %s", err.Error())
@@ -94,34 +95,16 @@ func TestStoreRegister(t *testing.T) {
 }
 
 func TestStoreAddToChain(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "sqlite.db")
-	t.Logf("DB path : %s\n", dbPath)
+	db := NewDB(t)
+	defer db.Close()
 
-	sqliteStore, err := New(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %s", err.Error())
-	}
-
-	defer func() {
-		if err := sqliteStore.Close(); err != nil {
-			t.Fatalf("Failed to close store: %s", err.Error())
-			return
-		}
-	}()
-
-	err = sqliteStore.RunMigrations("file://../../../migrations_sqlite")
-	if err != nil {
-		t.Fatalf("Migration failed: %s", err.Error())
-	}
-
-	userDevice, err := sqliteStore.RegisterNewUser("firstDevice")
+	userDevice, err := RegisterNewUser(db, "firstDevice")
 	if err != nil {
 		t.Fatalf("Failed: %s", err.Error())
 	}
 
 	t.Run("AddDeviceToChainWithLegacy no such user fails", func(t *testing.T) {
-		_, err = sqliteStore.AddDeviceToChainWithLegacy("foo bar", "bla bla")
+		_, err = AddDeviceToChainWithLegacy(db, "foo bar", "bla bla")
 		if err == nil {
 			t.Fatalf("Expected a failure")
 		}
@@ -132,7 +115,7 @@ func TestStoreAddToChain(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChainWithLegacy succeeds", func(t *testing.T) {
-		device, err := sqliteStore.AddDeviceToChainWithLegacy(userDevice.LegacySyncCode, "secondDevice")
+		device, err := AddDeviceToChainWithLegacy(db, userDevice.LegacySyncCode, "secondDevice")
 		if err != nil {
 			t.Fatalf("failed: %s", err.Error())
 		}
@@ -143,7 +126,7 @@ func TestStoreAddToChain(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChain no such user fails", func(t *testing.T) {
-		_, err = sqliteStore.AddDeviceToChain(uuid.New(), "bla bla")
+		_, err = AddDeviceToChain(db, uuid.New(), "bla bla")
 		if err == nil {
 			t.Fatalf("Expected a failure")
 		}
@@ -154,7 +137,7 @@ func TestStoreAddToChain(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChain succeeds", func(t *testing.T) {
-		device, err := sqliteStore.AddDeviceToChain(userDevice.UserId, "otherDevice")
+		device, err := AddDeviceToChain(db, userDevice.UserId, "otherDevice")
 		if err != nil {
 			t.Fatalf("failed: %s", err.Error())
 		}
@@ -166,40 +149,22 @@ func TestStoreAddToChain(t *testing.T) {
 }
 
 func TestStoreApi(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "sqlite.db")
-	t.Logf("DB path : %s\n", dbPath)
-
-	sqliteStore, err := New(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create store: %s", err.Error())
-	}
-
-	defer func() {
-		if err := sqliteStore.Close(); err != nil {
-			t.Fatalf("Failed to close store: %s", err.Error())
-			return
-		}
-	}()
-
-	err = sqliteStore.RunMigrations("file://../../../migrations_sqlite")
-	if err != nil {
-		t.Fatalf("Migration failed: %s", err.Error())
-	}
+	db := NewDB(t)
+	defer db.Close()
 
 	legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-	_, err = sqliteStore.EnsureMigration(legacySyncCode, 1, "devicename")
+	_, err := EnsureMigration(db, legacySyncCode, 1, "devicename")
 	if err != nil {
 		t.Fatalf("Got an error: %s", err.Error())
 	}
 
-	userDevice, err := sqliteStore.GetLegacyDevice(legacySyncCode, 1)
+	userDevice, err := GetLegacyDevice(db, legacySyncCode, 1)
 	if err != nil {
 		t.Fatalf("Got an error: %s", err.Error())
 	}
 
 	t.Run("Migration invalid synccode returns error", func(t *testing.T) {
-		_, err := sqliteStore.EnsureMigration("tooshort", 1, "foo")
+		_, err := EnsureMigration(db, "tooshort", 1, "foo")
 
 		if err == nil {
 			t.Error("Expected an error")
@@ -211,7 +176,7 @@ func TestStoreApi(t *testing.T) {
 
 		legacySyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 		wantRows = 2
-		got, err := sqliteStore.EnsureMigration(legacySyncCode, 66, "devicename")
+		got, err := EnsureMigration(db, legacySyncCode, 66, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -221,7 +186,7 @@ func TestStoreApi(t *testing.T) {
 
 		// Add another device
 		wantRows = 1
-		got, err = sqliteStore.EnsureMigration(legacySyncCode, 67, "devicename")
+		got, err = EnsureMigration(db, legacySyncCode, 67, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -231,7 +196,7 @@ func TestStoreApi(t *testing.T) {
 
 		// Same device again
 		wantRows = 0
-		got, err = sqliteStore.EnsureMigration(legacySyncCode, 67, "devicename")
+		got, err = EnsureMigration(db, legacySyncCode, 67, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -240,7 +205,7 @@ func TestStoreApi(t *testing.T) {
 		}
 
 		// Ensure data is correct
-		rows, err := sqliteStore.db.Query(
+		rows, err := db.Query(
 			`select
 			  device_id,
 				legacy_device_id,
@@ -248,7 +213,7 @@ func TestStoreApi(t *testing.T) {
 				last_seen,
 				user_db_id
 			from devices
-			  where legacy_device_id = ? or legacy_device_id = ?
+			  where legacy_device_id = $1 or legacy_device_id = $2
 			`,
 			66,
 			67,
@@ -292,7 +257,7 @@ func TestStoreApi(t *testing.T) {
 	})
 
 	t.Run("Write and get legacy articles", func(t *testing.T) {
-		articles, err := sqliteStore.GetArticles(userDevice.UserId, 0)
+		articles, err := GetArticles(db, userDevice.UserId, 0)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -301,12 +266,12 @@ func TestStoreApi(t *testing.T) {
 			t.Fatalf("Expected no articles yet: %d", len(articles))
 		}
 
-		if err = sqliteStore.AddLegacyArticle(userDevice.UserDbId, "first"); err != nil {
+		if err = AddLegacyArticle(db, userDevice.UserDbId, "first"); err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 
 		// Now should get one
-		articles, err = sqliteStore.GetArticles(userDevice.UserId, 0)
+		articles, err = GetArticles(db, userDevice.UserId, 0)
 		if err != nil {
 			t.Fatalf("Got an error:%s", err.Error())
 		}
@@ -316,7 +281,7 @@ func TestStoreApi(t *testing.T) {
 		}
 
 		article := articles[0]
-		articles, err = sqliteStore.GetArticles(userDevice.UserId, article.UpdatedAt)
+		articles, err = GetArticles(db, userDevice.UserId, article.UpdatedAt)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -327,7 +292,7 @@ func TestStoreApi(t *testing.T) {
 	})
 
 	t.Run("Update device last seen", func(t *testing.T) {
-		res, err := sqliteStore.UpdateLastSeenForDevice(userDevice)
+		res, err := UpdateLastSeenForDevice(db, userDevice)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -336,7 +301,7 @@ func TestStoreApi(t *testing.T) {
 			t.Fatalf("Expected 1, got %d", res)
 		}
 
-		updatedDevice, err := sqliteStore.GetLegacyDevice(legacySyncCode, 1)
+		updatedDevice, err := GetLegacyDevice(db, legacySyncCode, 1)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -347,7 +312,7 @@ func TestStoreApi(t *testing.T) {
 	})
 
 	t.Run("GetLegacyDevice fails no such device", func(t *testing.T) {
-		_, err := sqliteStore.GetLegacyDevice(legacySyncCode, 9999)
+		_, err := GetLegacyDevice(db, legacySyncCode, 9999)
 		if err == nil {
 			t.Fatalf("Expected error")
 		}
@@ -359,7 +324,7 @@ func TestStoreApi(t *testing.T) {
 
 	t.Run("Feeds", func(t *testing.T) {
 		// Initial get is empty
-		feeds, err := sqliteStore.GetLegacyFeeds(userDevice.UserId)
+		feeds, err := GetLegacyFeeds(db, userDevice.UserId)
 		if err == nil {
 			t.Fatalf("Expected error on first query not %q", feeds)
 		} else {
@@ -369,7 +334,7 @@ func TestStoreApi(t *testing.T) {
 		}
 
 		// Add some feeds
-		count, err := sqliteStore.UpdateLegacyFeeds(
+		count, err := UpdateLegacyFeeds(db,
 			userDevice.UserDbId,
 			1,
 			"content",
@@ -384,7 +349,7 @@ func TestStoreApi(t *testing.T) {
 		}
 
 		// New update comes in
-		count, err = sqliteStore.UpdateLegacyFeeds(
+		count, err = UpdateLegacyFeeds(db,
 			userDevice.UserDbId,
 			2,
 			"content2",
@@ -399,7 +364,7 @@ func TestStoreApi(t *testing.T) {
 		}
 
 		// Now get the value
-		feeds, err = sqliteStore.GetLegacyFeeds(userDevice.UserId)
+		feeds, err = GetLegacyFeeds(db, userDevice.UserId)
 		if err != nil {
 			t.Fatalf("Error: %s", err.Error())
 		}
@@ -412,31 +377,6 @@ func TestStoreApi(t *testing.T) {
 		}
 		if feeds.Etag != "101" {
 			t.Errorf("Incorrect etag: %s", feeds.Etag)
-		}
-	})
-}
-
-func TestMigrations(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "sqlite.db")
-	t.Logf("DB path : %s\n", dbPath)
-
-	t.Run("Run migrations", func(t *testing.T) {
-		store, err := New(dbPath)
-		if err != nil {
-			t.Fatalf("Failed to create store: %s", err.Error())
-		}
-
-		defer func() {
-			if err := store.Close(); err != nil {
-				t.Fatalf("Failed to close store: %s", err.Error())
-				return
-			}
-		}()
-
-		err = store.RunMigrations("file://../../../migrations_sqlite")
-		if err != nil {
-			t.Errorf("Migration failed: %s", err.Error())
 		}
 	})
 }
