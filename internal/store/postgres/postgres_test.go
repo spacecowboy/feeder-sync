@@ -1,40 +1,85 @@
 package postgres
 
 import (
-	"database/sql"
+	"context"
 	"testing"
+	"time"
 
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	"github.com/peterldowns/pgtestdb"
-	"github.com/peterldowns/pgtestdb/migrators/golangmigrator"
 	"github.com/spacecowboy/feeder-sync/internal/store"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
+)
+
+const (
+	user     = "username"
+	password = "password"
+	dbname   = "feedertest"
 )
 
 // NewDB is a helper that returns an open connection to a unique and isolated
 // test database, fully migrated and ready for you to query.
-func NewDB(t *testing.T) *sql.DB {
+func NewDB(t *testing.T) (PostgresStore, error) {
 	t.Helper()
-	conf := pgtestdb.Config{
-		DriverName: "postgres",
-		User:       "postgres",
-		Password:   "password",
-		Host:       "localhost",
-		Port:       "55432",
-		Options:    "sslmode=disable",
-	}
-	migrator := golangmigrator.New("../../../migrations_postgres")
+	ctx := context.Background()
 
-	return pgtestdb.New(t, conf, migrator)
+	container, err := postgres.RunContainer(
+		ctx,
+		testcontainers.WithImage("postgres:15"),
+		postgres.WithDatabase(dbname),
+		postgres.WithUsername(user),
+		postgres.WithPassword(password),
+		postgres.WithInitScripts(
+			"../../../migrations_postgres/1_create_tables.up.sql",
+			"../../../migrations_postgres/2_create_articles.up.sql",
+			"../../../migrations_postgres/3_add_updated_at.up.sql",
+			"../../../migrations_postgres/4_create_legacy_feeds.up.sql",
+			"../../../migrations_postgres/5_add_updated_at_index.up.sql",
+		),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(5*time.Second),
+		),
+	)
+
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	// Create snapshot
+	err = container.Snapshot(ctx, postgres.WithSnapshotName("test-snapshot"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Clean up the container after the test is complete
+	t.Cleanup(func() {
+		if err := container.Terminate(ctx); err != nil {
+			t.Fatalf("failed to terminate container: %s", err)
+		}
+	})
+
+	conn, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return New(conn)
 }
 
 func TestStoreRegister(t *testing.T) {
-	db := NewDB(t)
+	db, err := NewDB(t)
+
+	if err != nil {
+		t.Fatalf("Failed: %s", err.Error())
+	}
+
 	defer db.Close()
 
 	t.Run("Register new user works", func(t *testing.T) {
-		userDevice, err := RegisterNewUser(db, "devicename")
+		userDevice, err := db.RegisterNewUser("devicename")
 
 		if err != nil {
 			t.Fatalf("error: %s", err.Error())
@@ -60,7 +105,7 @@ func TestStoreRegister(t *testing.T) {
 			t.Errorf("bad LegacyDeviceId id: %d", userDevice.LegacyDeviceId)
 		}
 
-		devices, err := GetDevices(db, userDevice.UserId)
+		devices, err := db.GetDevices(userDevice.UserId)
 
 		if err != nil {
 			t.Fatalf("failed: %s", err.Error())
@@ -95,16 +140,21 @@ func TestStoreRegister(t *testing.T) {
 }
 
 func TestStoreAddToChain(t *testing.T) {
-	db := NewDB(t)
+	db, err := NewDB(t)
+
+	if err != nil {
+		t.Fatalf("Failed: %s", err.Error())
+	}
+
 	defer db.Close()
 
-	userDevice, err := RegisterNewUser(db, "firstDevice")
+	userDevice, err := db.RegisterNewUser("firstDevice")
 	if err != nil {
 		t.Fatalf("Failed: %s", err.Error())
 	}
 
 	t.Run("AddDeviceToChainWithLegacy no such user fails", func(t *testing.T) {
-		_, err = AddDeviceToChainWithLegacy(db, "foo bar", "bla bla")
+		_, err = db.AddDeviceToChainWithLegacy("foo bar", "bla bla")
 		if err == nil {
 			t.Fatalf("Expected a failure")
 		}
@@ -115,7 +165,7 @@ func TestStoreAddToChain(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChainWithLegacy succeeds", func(t *testing.T) {
-		device, err := AddDeviceToChainWithLegacy(db, userDevice.LegacySyncCode, "secondDevice")
+		device, err := db.AddDeviceToChainWithLegacy(userDevice.LegacySyncCode, "secondDevice")
 		if err != nil {
 			t.Fatalf("failed: %s", err.Error())
 		}
@@ -126,7 +176,7 @@ func TestStoreAddToChain(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChain no such user fails", func(t *testing.T) {
-		_, err = AddDeviceToChain(db, uuid.New(), "bla bla")
+		_, err = db.AddDeviceToChain(uuid.New(), "bla bla")
 		if err == nil {
 			t.Fatalf("Expected a failure")
 		}
@@ -137,7 +187,7 @@ func TestStoreAddToChain(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChain succeeds", func(t *testing.T) {
-		device, err := AddDeviceToChain(db, userDevice.UserId, "otherDevice")
+		device, err := db.AddDeviceToChain(userDevice.UserId, "otherDevice")
 		if err != nil {
 			t.Fatalf("failed: %s", err.Error())
 		}
@@ -149,22 +199,27 @@ func TestStoreAddToChain(t *testing.T) {
 }
 
 func TestStoreApi(t *testing.T) {
-	db := NewDB(t)
+	db, err := NewDB(t)
+
+	if err != nil {
+		t.Fatalf("Failed: %s", err.Error())
+	}
+
 	defer db.Close()
 
 	legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-	_, err := EnsureMigration(db, legacySyncCode, 1, "devicename")
+	_, err = db.EnsureMigration(legacySyncCode, 1, "devicename")
 	if err != nil {
 		t.Fatalf("Got an error: %s", err.Error())
 	}
 
-	userDevice, err := GetLegacyDevice(db, legacySyncCode, 1)
+	userDevice, err := db.GetLegacyDevice(legacySyncCode, 1)
 	if err != nil {
 		t.Fatalf("Got an error: %s", err.Error())
 	}
 
 	t.Run("Migration invalid synccode returns error", func(t *testing.T) {
-		_, err := EnsureMigration(db, "tooshort", 1, "foo")
+		_, err := db.EnsureMigration("tooshort", 1, "foo")
 
 		if err == nil {
 			t.Error("Expected an error")
@@ -176,7 +231,7 @@ func TestStoreApi(t *testing.T) {
 
 		legacySyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 		wantRows = 2
-		got, err := EnsureMigration(db, legacySyncCode, 66, "devicename")
+		got, err := db.EnsureMigration(legacySyncCode, 66, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -186,7 +241,7 @@ func TestStoreApi(t *testing.T) {
 
 		// Add another device
 		wantRows = 1
-		got, err = EnsureMigration(db, legacySyncCode, 67, "devicename")
+		got, err = db.EnsureMigration(legacySyncCode, 67, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -196,7 +251,7 @@ func TestStoreApi(t *testing.T) {
 
 		// Same device again
 		wantRows = 0
-		got, err = EnsureMigration(db, legacySyncCode, 67, "devicename")
+		got, err = db.EnsureMigration(legacySyncCode, 67, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -205,7 +260,7 @@ func TestStoreApi(t *testing.T) {
 		}
 
 		// Ensure data is correct
-		rows, err := db.Query(
+		rows, err := db.db.Query(
 			`select
 			  device_id,
 				legacy_device_id,
@@ -257,7 +312,7 @@ func TestStoreApi(t *testing.T) {
 	})
 
 	t.Run("Write and get legacy articles", func(t *testing.T) {
-		articles, err := GetArticles(db, userDevice.UserId, 0)
+		articles, err := db.GetArticles(userDevice.UserId, 0)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -266,12 +321,12 @@ func TestStoreApi(t *testing.T) {
 			t.Fatalf("Expected no articles yet: %d", len(articles))
 		}
 
-		if err = AddLegacyArticle(db, userDevice.UserDbId, "first"); err != nil {
+		if err = db.AddLegacyArticle(userDevice.UserDbId, "first"); err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 
 		// Now should get one
-		articles, err = GetArticles(db, userDevice.UserId, 0)
+		articles, err = db.GetArticles(userDevice.UserId, 0)
 		if err != nil {
 			t.Fatalf("Got an error:%s", err.Error())
 		}
@@ -281,7 +336,7 @@ func TestStoreApi(t *testing.T) {
 		}
 
 		article := articles[0]
-		articles, err = GetArticles(db, userDevice.UserId, article.UpdatedAt)
+		articles, err = db.GetArticles(userDevice.UserId, article.UpdatedAt)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -292,7 +347,7 @@ func TestStoreApi(t *testing.T) {
 	})
 
 	t.Run("Update device last seen", func(t *testing.T) {
-		res, err := UpdateLastSeenForDevice(db, userDevice)
+		res, err := db.UpdateLastSeenForDevice(userDevice)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -301,7 +356,7 @@ func TestStoreApi(t *testing.T) {
 			t.Fatalf("Expected 1, got %d", res)
 		}
 
-		updatedDevice, err := GetLegacyDevice(db, legacySyncCode, 1)
+		updatedDevice, err := db.GetLegacyDevice(legacySyncCode, 1)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -312,7 +367,7 @@ func TestStoreApi(t *testing.T) {
 	})
 
 	t.Run("GetLegacyDevice fails no such device", func(t *testing.T) {
-		_, err := GetLegacyDevice(db, legacySyncCode, 9999)
+		_, err := db.GetLegacyDevice(legacySyncCode, 9999)
 		if err == nil {
 			t.Fatalf("Expected error")
 		}
@@ -324,7 +379,7 @@ func TestStoreApi(t *testing.T) {
 
 	t.Run("Feeds", func(t *testing.T) {
 		// Initial get is empty
-		feeds, err := GetLegacyFeeds(db, userDevice.UserId)
+		feeds, err := db.GetLegacyFeeds(userDevice.UserId)
 		if err == nil {
 			t.Fatalf("Expected error on first query not %q", feeds)
 		} else {
@@ -334,7 +389,7 @@ func TestStoreApi(t *testing.T) {
 		}
 
 		// Add some feeds
-		count, err := UpdateLegacyFeeds(db,
+		count, err := db.UpdateLegacyFeeds(
 			userDevice.UserDbId,
 			1,
 			"content",
@@ -349,7 +404,7 @@ func TestStoreApi(t *testing.T) {
 		}
 
 		// New update comes in
-		count, err = UpdateLegacyFeeds(db,
+		count, err = db.UpdateLegacyFeeds(
 			userDevice.UserDbId,
 			2,
 			"content2",
@@ -364,7 +419,7 @@ func TestStoreApi(t *testing.T) {
 		}
 
 		// Now get the value
-		feeds, err = GetLegacyFeeds(db, userDevice.UserId)
+		feeds, err = db.GetLegacyFeeds(userDevice.UserId)
 		if err != nil {
 			t.Fatalf("Error: %s", err.Error())
 		}

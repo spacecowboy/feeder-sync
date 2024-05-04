@@ -33,6 +33,10 @@ func New(conn string) (PostgresStore, error) {
 	}, nil
 }
 
+func (s *PostgresStore) Close() error {
+	return s.db.Close()
+}
+
 func (s *PostgresStore) RunMigrations(path string) error {
 	driver, err := postgres.WithInstance(s.db, &postgres.Config{})
 	if err != nil {
@@ -66,7 +70,7 @@ func randomLegacySyncCode() (string, error) {
 	return syncCode, nil
 }
 
-func RegisterNewUser(db *sql.DB, deviceName string) (store.UserDevice, error) {
+func (s *PostgresStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
 	userDevice := store.UserDevice{
 		UserId:         uuid.New(),
 		DeviceId:       uuid.New(),
@@ -85,7 +89,7 @@ func RegisterNewUser(db *sql.DB, deviceName string) (store.UserDevice, error) {
 	userDevice.LegacySyncCode = legacySyncCode
 
 	// Insert user
-	err = db.QueryRow(
+	err = s.db.QueryRow(
 		"INSERT INTO users (user_id, legacy_sync_code) VALUES ($1, $2) RETURNING db_id",
 		userDevice.UserId,
 		userDevice.LegacySyncCode,
@@ -95,12 +99,12 @@ func RegisterNewUser(db *sql.DB, deviceName string) (store.UserDevice, error) {
 		return userDevice, err
 	}
 
-	return AddDeviceToUser(db, userDevice)
+	return s.AddDeviceToUser(userDevice)
 }
 
-func AddDeviceToChain(db *sql.DB, userId uuid.UUID, deviceName string) (store.UserDevice, error) {
+func (s *PostgresStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (store.UserDevice, error) {
 	var userDbId int64
-	row := db.QueryRow("SELECT db_id FROM users WHERE user_id = $1 limit 1", userId)
+	row := s.db.QueryRow("SELECT db_id FROM users WHERE user_id = $1 limit 1", userId)
 	if err := row.Scan(&userDbId); err != nil {
 		if err == sql.ErrNoRows {
 			return store.UserDevice{}, errors.New("user not found")
@@ -124,12 +128,12 @@ func AddDeviceToChain(db *sql.DB, userId uuid.UUID, deviceName string) (store.Us
 		LegacyDeviceId: rand.Int63(),
 	}
 
-	return AddDeviceToUser(db, userDevice)
+	return s.AddDeviceToUser(userDevice)
 }
 
-func AddDeviceToChainWithLegacy(db *sql.DB, syncCode string, deviceName string) (store.UserDevice, error) {
+func (s *PostgresStore) AddDeviceToChainWithLegacy(syncCode string, deviceName string) (store.UserDevice, error) {
 	var userDbId int64
-	row := db.QueryRow("SELECT db_id FROM users WHERE legacy_sync_code = $1 limit 1", syncCode)
+	row := s.db.QueryRow("SELECT db_id FROM users WHERE legacy_sync_code = $1 limit 1", syncCode)
 	if err := row.Scan(&userDbId); err != nil {
 		if err == sql.ErrNoRows {
 			return store.UserDevice{}, errors.New("user not found")
@@ -147,13 +151,13 @@ func AddDeviceToChainWithLegacy(db *sql.DB, syncCode string, deviceName string) 
 		LegacyDeviceId: rand.Int63(),
 	}
 
-	return AddDeviceToUser(db, userDevice)
+	return s.AddDeviceToUser(userDevice)
 }
 
-func AddDeviceToUser(db *sql.DB, userDevice store.UserDevice) (store.UserDevice, error) {
+func (s *PostgresStore) AddDeviceToUser(userDevice store.UserDevice) (store.UserDevice, error) {
 	var dbId int64
 	// Insert device
-	if err := db.QueryRow(
+	if err := s.db.QueryRow(
 		"INSERT INTO devices (device_id, legacy_device_id, device_name, last_seen, user_db_id) VALUES ($1, $2, $3, $4, $5) RETURNING db_id",
 		userDevice.DeviceId,
 		userDevice.LegacyDeviceId,
@@ -168,7 +172,7 @@ func AddDeviceToUser(db *sql.DB, userDevice store.UserDevice) (store.UserDevice,
 	return userDevice, nil
 }
 
-func EnsureMigration(db *sql.DB, syncCode string, deviceId int64, deviceName string) (int64, error) {
+func (s *PostgresStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error) {
 	if len(syncCode) != 64 {
 		return 0, fmt.Errorf("not a 64 char synccode: %q", syncCode)
 	}
@@ -179,12 +183,12 @@ func EnsureMigration(db *sql.DB, syncCode string, deviceId int64, deviceName str
 	var deviceDbId int64
 
 	// Insert user
-	if err := db.QueryRow("INSERT INTO users (user_id, legacy_sync_code) VALUES ($1, $2) RETURNING db_id", uuid.New(), syncCode).Scan(&userDbId); err != nil {
+	if err := s.db.QueryRow("INSERT INTO users (user_id, legacy_sync_code) VALUES ($1, $2) RETURNING db_id", uuid.New(), syncCode).Scan(&userDbId); err != nil {
 		if !strings.Contains(err.Error(), "idx_users_legacy_sync_code") {
 			return userCount + deviceCount, fmt.Errorf("insert user: %v", err)
 		}
 
-		row := db.QueryRow("SELECT db_id FROM users WHERE legacy_sync_code = $1 limit 1", syncCode)
+		row := s.db.QueryRow("SELECT db_id FROM users WHERE legacy_sync_code = $1 limit 1", syncCode)
 		if err := row.Scan(&userDbId); err != nil {
 			if err == sql.ErrNoRows {
 				return userCount + deviceCount, fmt.Errorf("no user with syncCode %q", syncCode)
@@ -197,7 +201,7 @@ func EnsureMigration(db *sql.DB, syncCode string, deviceId int64, deviceName str
 	}
 
 	// Insert device
-	if err := db.QueryRow(
+	if err := s.db.QueryRow(
 		"INSERT INTO devices (device_id, legacy_device_id, device_name, last_seen, user_db_id) VALUES ($1, $2, $3, $4, $5) RETURNING db_id",
 		uuid.New(),
 		deviceId,
@@ -216,9 +220,9 @@ func EnsureMigration(db *sql.DB, syncCode string, deviceId int64, deviceName str
 	return userCount + deviceCount, nil
 }
 
-func GetLegacyDevice(db *sql.DB, syncCode string, deviceId int64) (store.UserDevice, error) {
+func (s *PostgresStore) GetLegacyDevice(syncCode string, deviceId int64) (store.UserDevice, error) {
 
-	row := db.QueryRow(
+	row := s.db.QueryRow(
 		`
 		select
 		  users.db_id,
@@ -252,8 +256,8 @@ func GetLegacyDevice(db *sql.DB, syncCode string, deviceId int64) (store.UserDev
 	return userDevice, nil
 }
 
-func UpdateLastSeenForDevice(db *sql.DB, device store.UserDevice) (int64, error) {
-	result, err := db.Exec(
+func (s *PostgresStore) UpdateLastSeenForDevice(device store.UserDevice) (int64, error) {
+	result, err := s.db.Exec(
 		`
 		update devices
 		  set last_seen = $1
@@ -270,8 +274,8 @@ func UpdateLastSeenForDevice(db *sql.DB, device store.UserDevice) (int64, error)
 	return result.RowsAffected()
 }
 
-func GetArticles(db *sql.DB, userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
-	rows, err := db.Query(
+func (s *PostgresStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
+	rows, err := s.db.Query(
 		`
 		select
 		  user_id,
@@ -310,9 +314,9 @@ func GetArticles(db *sql.DB, userId uuid.UUID, sinceMillis int64) ([]store.Artic
 	return articles, nil
 }
 
-func AddLegacyArticle(db *sql.DB, userDbId int64, identifier string) error {
+func (s *PostgresStore) AddLegacyArticle(userDbId int64, identifier string) error {
 	now := time.Now().UnixMilli()
-	_, err := db.Exec(
+	_, err := s.db.Exec(
 		`insert into articles (user_db_id, identifier, read_time, updated_at) values($1, $2 ,$3, $4)`,
 		userDbId,
 		identifier,
@@ -328,8 +332,8 @@ func AddLegacyArticle(db *sql.DB, userDbId int64, identifier string) error {
 	return nil
 }
 
-func RemoveDeviceWithLegacy(db *sql.DB, userDbId int64, legacyDeviceId int64) (int64, error) {
-	result, err := db.Exec(
+func (s *PostgresStore) RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId int64) (int64, error) {
+	result, err := s.db.Exec(
 		`
 		delete from devices
 		  where user_db_id = $1 and legacy_device_id = $2
@@ -344,8 +348,8 @@ func RemoveDeviceWithLegacy(db *sql.DB, userDbId int64, legacyDeviceId int64) (i
 	return result.RowsAffected()
 }
 
-func GetDevices(db *sql.DB, userId uuid.UUID) ([]store.UserDevice, error) {
-	rows, err := db.Query(
+func (s *PostgresStore) GetDevices(userId uuid.UUID) ([]store.UserDevice, error) {
+	rows, err := s.db.Query(
 		`
 		select
 		  users.db_id,
@@ -386,8 +390,8 @@ func GetDevices(db *sql.DB, userId uuid.UUID) ([]store.UserDevice, error) {
 	return devices, nil
 }
 
-func GetLegacyFeeds(db *sql.DB, userId uuid.UUID) (store.LegacyFeeds, error) {
-	row := db.QueryRow(
+func (s *PostgresStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, error) {
+	row := s.db.QueryRow(
 		`
 		select
 			user_id,
@@ -413,8 +417,8 @@ func GetLegacyFeeds(db *sql.DB, userId uuid.UUID) (store.LegacyFeeds, error) {
 	return feeds, nil
 }
 
-func UpdateLegacyFeeds(db *sql.DB, userDbId int64, contentHash int64, content string, etag string) (int64, error) {
-	result, err := db.Exec(
+func (s *PostgresStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag string) (int64, error) {
+	result, err := s.db.Exec(
 		`
 		insert into
 		  legacy_feeds (user_db_id, content_hash, content, etag)
