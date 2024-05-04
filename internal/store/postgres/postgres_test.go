@@ -33,6 +33,7 @@ func NewContainer(t *testing.T, ctx context.Context) (*postgres.PostgresContaine
 		postgres.WithDatabase(dbname),
 		postgres.WithUsername(user),
 		postgres.WithPassword(password),
+		WithTmpfs(),
 		// postgres.WithInitScripts(
 		// 	"../../../migrations_postgres/1_create_tables.up.sql",
 		// 	"../../../migrations_postgres/2_create_articles.up.sql",
@@ -57,6 +58,22 @@ func NewContainer(t *testing.T, ctx context.Context) (*postgres.PostgresContaine
 	})
 
 	return container, nil
+}
+
+func WithTmpfs() testcontainers.CustomizeRequestOption {
+	return func(req *testcontainers.GenericContainerRequest) {
+		req.Tmpfs = map[string]string{"/var/lib/postgresql/data": "rw"}
+		req.Env["PGDATA"] = "/var/lib/postgresql/data"
+		req.Cmd = []string{
+			"postgres",
+			"-c",
+			// turn off fsync for speed
+			"fsync=off",
+			"-c",
+			// log everything for debugging
+			"log_statement=all",
+		}
+	}
 }
 
 func NewStore(t *testing.T, ctx context.Context, container *postgres.PostgresContainer) PostgresStore {
