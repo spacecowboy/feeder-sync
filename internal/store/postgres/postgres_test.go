@@ -8,6 +8,8 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
+	"github.com/peterldowns/pgtestdb"
+	"github.com/peterldowns/pgtestdb/migrators/golangmigrator"
 	"github.com/spacecowboy/feeder-sync/internal/store"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -22,9 +24,8 @@ const (
 
 // NewDB is a helper that returns an open connection to a unique and isolated
 // test database, fully migrated and ready for you to query.
-func NewDB(t *testing.T) (PostgresStore, error) {
+func NewContainer(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, error) {
 	t.Helper()
-	ctx := context.Background()
 
 	container, err := postgres.RunContainer(
 		ctx,
@@ -32,13 +33,13 @@ func NewDB(t *testing.T) (PostgresStore, error) {
 		postgres.WithDatabase(dbname),
 		postgres.WithUsername(user),
 		postgres.WithPassword(password),
-		postgres.WithInitScripts(
-			"../../../migrations_postgres/1_create_tables.up.sql",
-			"../../../migrations_postgres/2_create_articles.up.sql",
-			"../../../migrations_postgres/3_add_updated_at.up.sql",
-			"../../../migrations_postgres/4_create_legacy_feeds.up.sql",
-			"../../../migrations_postgres/5_add_updated_at_index.up.sql",
-		),
+		// postgres.WithInitScripts(
+		// 	"../../../migrations_postgres/1_create_tables.up.sql",
+		// 	"../../../migrations_postgres/2_create_articles.up.sql",
+		// 	"../../../migrations_postgres/3_add_updated_at.up.sql",
+		// 	"../../../migrations_postgres/4_create_legacy_feeds.up.sql",
+		// 	"../../../migrations_postgres/5_add_updated_at_index.up.sql",
+		// ),
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(5*time.Second),
 		),
@@ -48,12 +49,6 @@ func NewDB(t *testing.T) (PostgresStore, error) {
 		t.Fatalf("Failed to start postgres container: %s", err.Error())
 	}
 
-	// Create snapshot
-	err = container.Snapshot(ctx, postgres.WithSnapshotName("test-snapshot"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// Clean up the container after the test is complete
 	t.Cleanup(func() {
 		if err := container.Terminate(ctx); err != nil {
@@ -61,24 +56,51 @@ func NewDB(t *testing.T) (PostgresStore, error) {
 		}
 	})
 
-	conn, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return New(conn)
+	return container, nil
 }
 
-func TestStoreRegister(t *testing.T) {
-	db, err := NewDB(t)
+func NewStore(t *testing.T, ctx context.Context, container *postgres.PostgresContainer) PostgresStore {
+	t.Helper()
 
+	host, err := container.Host(ctx)
 	if err != nil {
-		t.Fatalf("Failed: %s", err.Error())
+		t.Fatalf("Failed to get host: %s", err.Error())
 	}
 
-	defer db.Close()
+	port, err := container.MappedPort(ctx, "5432/tcp")
+	if err != nil {
+		t.Fatalf("Failed to get port: %s", err.Error())
+	}
+
+	conf := pgtestdb.Config{
+		DriverName: "postgres",
+		User:       user,
+		Password:   password,
+		Database:   dbname,
+		Host:       host,
+		Port:       port.Port(),
+		Options:    "sslmode=disable",
+	}
+
+	migrator := golangmigrator.New("../../../migrations_postgres")
+	return PostgresStore{
+		db: pgtestdb.New(t, conf, migrator),
+	}
+}
+
+func TestPostgresIntegration(t *testing.T) {
+	ctx := context.Background()
+	container, err := NewContainer(t, ctx)
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	t.Parallel()
 
 	t.Run("Register new user works", func(t *testing.T) {
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
 		userDevice, err := db.RegisterNewUser("devicename")
 
 		if err != nil {
@@ -137,23 +159,11 @@ func TestStoreRegister(t *testing.T) {
 			t.Errorf("bad LegacyDeviceId id: %d", userDevice.LegacyDeviceId)
 		}
 	})
-}
-
-func TestStoreAddToChain(t *testing.T) {
-	db, err := NewDB(t)
-
-	if err != nil {
-		t.Fatalf("Failed: %s", err.Error())
-	}
-
-	defer db.Close()
-
-	userDevice, err := db.RegisterNewUser("firstDevice")
-	if err != nil {
-		t.Fatalf("Failed: %s", err.Error())
-	}
 
 	t.Run("AddDeviceToChainWithLegacy no such user fails", func(t *testing.T) {
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
 		_, err = db.AddDeviceToChainWithLegacy("foo bar", "bla bla")
 		if err == nil {
 			t.Fatalf("Expected a failure")
@@ -165,6 +175,14 @@ func TestStoreAddToChain(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChainWithLegacy succeeds", func(t *testing.T) {
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		userDevice, err := db.RegisterNewUser("firstDevice")
+		if err != nil {
+			t.Fatalf("Failed: %s", err.Error())
+		}
+
 		device, err := db.AddDeviceToChainWithLegacy(userDevice.LegacySyncCode, "secondDevice")
 		if err != nil {
 			t.Fatalf("failed: %s", err.Error())
@@ -176,6 +194,9 @@ func TestStoreAddToChain(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChain no such user fails", func(t *testing.T) {
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
 		_, err = db.AddDeviceToChain(uuid.New(), "bla bla")
 		if err == nil {
 			t.Fatalf("Expected a failure")
@@ -187,6 +208,14 @@ func TestStoreAddToChain(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChain succeeds", func(t *testing.T) {
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		userDevice, err := db.RegisterNewUser("firstDevice")
+		if err != nil {
+			t.Fatalf("Failed: %s", err.Error())
+		}
+
 		device, err := db.AddDeviceToChain(userDevice.UserId, "otherDevice")
 		if err != nil {
 			t.Fatalf("failed: %s", err.Error())
@@ -196,30 +225,12 @@ func TestStoreAddToChain(t *testing.T) {
 			t.Errorf("Wrong device name: %s", got)
 		}
 	})
-}
-
-func TestStoreApi(t *testing.T) {
-	db, err := NewDB(t)
-
-	if err != nil {
-		t.Fatalf("Failed: %s", err.Error())
-	}
-
-	defer db.Close()
-
-	legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-	_, err = db.EnsureMigration(legacySyncCode, 1, "devicename")
-	if err != nil {
-		t.Fatalf("Got an error: %s", err.Error())
-	}
-
-	userDevice, err := db.GetLegacyDevice(legacySyncCode, 1)
-	if err != nil {
-		t.Fatalf("Got an error: %s", err.Error())
-	}
 
 	t.Run("Migration invalid synccode returns error", func(t *testing.T) {
-		_, err := db.EnsureMigration("tooshort", 1, "foo")
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		_, err = db.EnsureMigration("tooshort", 1, "foo")
 
 		if err == nil {
 			t.Error("Expected an error")
@@ -227,9 +238,23 @@ func TestStoreApi(t *testing.T) {
 	})
 
 	t.Run("Ensure migration works", func(t *testing.T) {
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+		_, err = db.EnsureMigration(legacySyncCode, 1, "devicename")
+		if err != nil {
+			t.Fatalf("Got an error: %s", err.Error())
+		}
+
+		_, err := db.GetLegacyDevice(legacySyncCode, 1)
+		if err != nil {
+			t.Fatalf("Got an error: %s", err.Error())
+		}
+
 		var wantRows int64
 
-		legacySyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+		legacySyncCode = "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 		wantRows = 2
 		got, err := db.EnsureMigration(legacySyncCode, 66, "devicename")
 		if err != nil {
@@ -312,6 +337,20 @@ func TestStoreApi(t *testing.T) {
 	})
 
 	t.Run("Write and get legacy articles", func(t *testing.T) {
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+		_, err = db.EnsureMigration(legacySyncCode, 1, "devicename")
+		if err != nil {
+			t.Fatalf("Got an error: %s", err.Error())
+		}
+
+		userDevice, err := db.GetLegacyDevice(legacySyncCode, 1)
+		if err != nil {
+			t.Fatalf("Got an error: %s", err.Error())
+		}
+
 		articles, err := db.GetArticles(userDevice.UserId, 0)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
@@ -347,6 +386,20 @@ func TestStoreApi(t *testing.T) {
 	})
 
 	t.Run("Update device last seen", func(t *testing.T) {
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+		_, err = db.EnsureMigration(legacySyncCode, 1, "devicename")
+		if err != nil {
+			t.Fatalf("Got an error: %s", err.Error())
+		}
+
+		userDevice, err := db.GetLegacyDevice(legacySyncCode, 1)
+		if err != nil {
+			t.Fatalf("Got an error: %s", err.Error())
+		}
+
 		res, err := db.UpdateLastSeenForDevice(userDevice)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
@@ -367,7 +420,15 @@ func TestStoreApi(t *testing.T) {
 	})
 
 	t.Run("GetLegacyDevice fails no such device", func(t *testing.T) {
-		_, err := db.GetLegacyDevice(legacySyncCode, 9999)
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+		_, err = db.EnsureMigration(legacySyncCode, 1, "devicename")
+		if err != nil {
+			t.Fatalf("Got an error: %s", err.Error())
+		}
+		_, err = db.GetLegacyDevice(legacySyncCode, 9999)
 		if err == nil {
 			t.Fatalf("Expected error")
 		}
@@ -378,6 +439,20 @@ func TestStoreApi(t *testing.T) {
 	})
 
 	t.Run("Feeds", func(t *testing.T) {
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+		_, err = db.EnsureMigration(legacySyncCode, 1, "devicename")
+		if err != nil {
+			t.Fatalf("Got an error: %s", err.Error())
+		}
+
+		userDevice, err := db.GetLegacyDevice(legacySyncCode, 1)
+		if err != nil {
+			t.Fatalf("Got an error: %s", err.Error())
+		}
+
 		// Initial get is empty
 		feeds, err := db.GetLegacyFeeds(userDevice.UserId)
 		if err == nil {
