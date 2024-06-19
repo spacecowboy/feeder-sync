@@ -22,6 +22,21 @@ type DataStore interface {
 	// Inserts a new user and device with the given legacy values if not already exists.
 	// NOOP if already exists.
 	EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error)
+	// Admin functions
+	TransferUsersToStore(toStore DataStore) error
+	AcceptUser(user *User) error
+	TransferDevicesToStore(toStore DataStore) error
+	AcceptDevice(device *UserDevice) error
+	TransferArticlesToStore(toStore DataStore) error
+	AcceptArticle(article *Article) error
+	TransferLegacyFeedsToStore(toStore DataStore) error
+	AcceptLegacyFeeds(feeds *LegacyFeeds) error
+}
+
+type User struct {
+	UserDbId       int64
+	UserId         uuid.UUID
+	LegacySyncCode string
 }
 
 type UserDevice struct {
@@ -37,6 +52,7 @@ type UserDevice struct {
 }
 
 type Article struct {
+	UserDbId   int64
 	UserId     uuid.UUID
 	ReadTime   int64
 	Identifier string
@@ -44,6 +60,7 @@ type Article struct {
 }
 
 type LegacyFeeds struct {
+	UserDbId    int64
 	UserId      uuid.UUID
 	ContentHash int64
 	Content     string

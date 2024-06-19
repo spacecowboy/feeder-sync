@@ -3,12 +3,20 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/spacecowboy/feeder-sync/internal/server"
 )
 
 func main() {
-	server, err := server.NewServerWithSqlite()
+	conn := os.Getenv("FEEDER_SYNC_POSTGRES_CONN")
+
+	if conn == "" {
+		log.Fatal("FEEDER_SYNC_POSTGRES_CONN environment variable not set")
+	}
+
+	server, err := server.NewServerWithPostgres(conn)
+
 	if err != nil {
 		log.Fatalf("Failed to create server: %q", err)
 	}

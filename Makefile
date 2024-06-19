@@ -1,12 +1,11 @@
-MAIN_PACKAGE_PATH := ./cmd/webserver
-BINARY_NAME := webserver
-
 .PHONY: build
-build: out/${BINARY_NAME}
+build: out/webserver out/store_transfer
 
-out/${BINARY_NAME}: out
-	go build -o out/${BINARY_NAME} ${MAIN_PACKAGE_PATH}
-# GOARCH=amd64 GOOS=linux go build -o ${BINARY_NAME}-linux main.go
+out/store_transfer: out
+	go build -o out/store_transfer ./cmd/store_transfer
+
+out/webserver: out
+	go build -o out/webserver ./cmd/webserver
 
 out:
 	mkdir out

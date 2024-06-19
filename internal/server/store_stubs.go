@@ -120,6 +120,38 @@ func (s InMemoryStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, cont
 	return 0, errors.New("BOOM")
 }
 
+func (s InMemoryStore) TransferUsersToStore(toStore store.DataStore) error {
+	return errors.New("BOOM")
+}
+
+func (s InMemoryStore) AcceptUser(user *store.User) error {
+	return errors.New("BOOM")
+}
+
+func (s InMemoryStore) TransferDevicesToStore(toStore store.DataStore) error {
+	return errors.New("BOOM")
+}
+
+func (s InMemoryStore) AcceptDevice(device *store.UserDevice) error {
+	return errors.New("BOOM")
+}
+
+func (s InMemoryStore) TransferArticlesToStore(toStore store.DataStore) error {
+	return errors.New("BOOM")
+}
+
+func (s InMemoryStore) AcceptArticle(article *store.Article) error {
+	return errors.New("BOOM")
+}
+
+func (s InMemoryStore) TransferLegacyFeedsToStore(toStore store.DataStore) error {
+	return errors.New("BOOM")
+}
+
+func (s InMemoryStore) AcceptLegacyFeeds(feeds *store.LegacyFeeds) error {
+	return errors.New("BOOM")
+}
+
 type ExplodingStore struct{}
 
 func (s ExplodingStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
@@ -172,6 +204,38 @@ func (s ExplodingStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, err
 
 func (s ExplodingStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag string) (int64, error) {
 	return 0, errors.New("BOOM")
+}
+
+func (s ExplodingStore) TransferUsersToStore(toStore store.DataStore) error {
+	return errors.New("BOOM")
+}
+
+func (s ExplodingStore) AcceptUser(user *store.User) error {
+	return errors.New("BOOM")
+}
+
+func (s ExplodingStore) TransferDevicesToStore(toStore store.DataStore) error {
+	return errors.New("BOOM")
+}
+
+func (s ExplodingStore) AcceptDevice(device *store.UserDevice) error {
+	return errors.New("BOOM")
+}
+
+func (s ExplodingStore) TransferArticlesToStore(toStore store.DataStore) error {
+	return errors.New("BOOM")
+}
+
+func (s ExplodingStore) AcceptArticle(article *store.Article) error {
+	return errors.New("BOOM")
+}
+
+func (s ExplodingStore) TransferLegacyFeedsToStore(toStore store.DataStore) error {
+	return errors.New("BOOM")
+}
+
+func (s ExplodingStore) AcceptLegacyFeeds(feeds *store.LegacyFeeds) error {
+	return errors.New("BOOM")
 }
 
 func NewSqliteServer(tempdir string) (*FeederServer, error) {

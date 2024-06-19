@@ -473,3 +473,196 @@ func (s *SqliteStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, conte
 	}
 	return result.RowsAffected()
 }
+
+func (s *SqliteStore) TransferUsersToStore(toStore store.DataStore) error {
+	rows, err := s.db.Query(
+		`
+		select
+		  db_id,
+		  user_id,
+			legacy_sync_code
+		from users
+		`,
+	)
+
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var count int
+	var user store.User
+
+	for rows.Next() {
+		if err := rows.Scan(&user.UserDbId, &user.UserId, &user.LegacySyncCode); err != nil {
+			return err
+		}
+		log.Println("User: ", count)
+
+		toStore.AcceptUser(&user)
+		count++
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *SqliteStore) AcceptUser(user *store.User) error {
+	// Insert user
+	_, err := s.db.Exec(
+		"INSERT INTO users (db_id, user_id, legacy_sync_code) VALUES (?, ?, ?)",
+		user.UserDbId,
+		user.UserId,
+		user.LegacySyncCode,
+	)
+	return err
+}
+
+func (s *SqliteStore) TransferDevicesToStore(toStore store.DataStore) error {
+	rows, err := s.db.Query(
+		`
+		select
+		  user_db_id,
+			device_id,
+			device_name,
+			legacy_device_id,
+			last_seen
+		from devices
+		`,
+	)
+
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var count int
+	var userDevice store.UserDevice
+
+	for rows.Next() {
+		if err := rows.Scan(&userDevice.UserDbId, &userDevice.DeviceId, &userDevice.DeviceName, &userDevice.LegacyDeviceId, &userDevice.LastSeen); err != nil {
+			return err
+		}
+		log.Println("Device: ", count)
+
+		toStore.AcceptDevice(&userDevice)
+		count++
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *SqliteStore) AcceptDevice(device *store.UserDevice) error {
+	// Insert device
+	_, err := s.db.Exec(
+		"INSERT INTO devices (device_id, legacy_device_id, device_name, last_seen, user_db_id) VALUES (?, ?, ?, ?, ?)",
+		device.DeviceId,
+		device.LegacyDeviceId,
+		device.DeviceName,
+		device.LastSeen,
+		device.UserDbId,
+	)
+	return err
+}
+
+func (s *SqliteStore) TransferArticlesToStore(toStore store.DataStore) error {
+	rows, err := s.db.Query(
+		`
+		select
+		  read_time,
+			identifier,
+			updated_at,
+			user_db_id
+		from articles
+		`,
+	)
+
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var count int
+	var article store.Article
+
+	for rows.Next() {
+		if err := rows.Scan(&article.ReadTime, &article.Identifier, &article.UpdatedAt, &article.UserDbId); err != nil {
+			return err
+		}
+		log.Println("Article: ", count)
+
+		toStore.AcceptArticle(&article)
+		count++
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *SqliteStore) AcceptArticle(article *store.Article) error {
+	// Insert article
+	_, err := s.db.Exec(
+		`insert into articles (user_db_id, identifier, read_time, updated_at) values(?, ? ,?, ?)`,
+		article.UserDbId,
+		article.Identifier,
+		article.ReadTime,
+		article.UpdatedAt,
+	)
+	return err
+}
+
+func (s *SqliteStore) TransferLegacyFeedsToStore(toStore store.DataStore) error {
+	rows, err := s.db.Query(
+		`
+		select
+		  content_hash,
+			content,
+			etag,
+			user_db_id
+		from legacy_feeds
+		`,
+	)
+
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var count int
+	var feeds store.LegacyFeeds
+
+	for rows.Next() {
+		if err := rows.Scan(&feeds.ContentHash, &feeds.Content, &feeds.Etag, &feeds.UserDbId); err != nil {
+			return err
+		}
+
+		log.Println("LegacyFeeds: ", count)
+		toStore.AcceptLegacyFeeds(&feeds)
+		count++
+	}
+
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *SqliteStore) AcceptLegacyFeeds(feeds *store.LegacyFeeds) error {
+	// Insert legacy feeds
+	_, err := s.db.Exec(
+		`
+		insert into
+		  legacy_feeds (user_db_id, content_hash, content, etag)
+			values(?, ?, ?, ?)
+		`,
+		feeds.UserDbId,
+		feeds.ContentHash,
+		feeds.Content,
+		feeds.Etag,
+	)
+	return err
+}

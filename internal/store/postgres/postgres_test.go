@@ -101,7 +101,7 @@ func NewStore(t *testing.T, ctx context.Context, container *postgres.PostgresCon
 
 	migrator := golangmigrator.New("../../../migrations_postgres")
 	return PostgresStore{
-		db: pgtestdb.New(t, conf, migrator),
+		Db: pgtestdb.New(t, conf, migrator),
 	}
 }
 
@@ -302,7 +302,7 @@ func TestPostgresIntegration(t *testing.T) {
 		}
 
 		// Ensure data is correct
-		rows, err := db.db.Query(
+		rows, err := db.Db.Query(
 			`select
 			  device_id,
 				legacy_device_id,
