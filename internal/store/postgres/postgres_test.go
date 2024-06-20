@@ -418,6 +418,12 @@ func TestPostgresIntegration(t *testing.T) {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 
+		etag1, err := db.GetLegacyDevicesEtag(legacySyncCode)
+		if err != nil {
+			t.Fatalf("Got an error: %s", err.Error())
+		}
+		assert.NotEqual(t, "", etag1, "Etag should not be empty")
+
 		res, err := db.UpdateLastSeenForDevice(userDevice)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
@@ -435,6 +441,13 @@ func TestPostgresIntegration(t *testing.T) {
 		if updatedDevice.LastSeen <= userDevice.LastSeen {
 			t.Fatalf("New value %d is not greater than old value %d", updatedDevice.LastSeen, userDevice.LastSeen)
 		}
+
+		etag2, err := db.GetLegacyDevicesEtag(legacySyncCode)
+		if err != nil {
+			t.Fatalf("Got an error: %s", err.Error())
+		}
+
+		assert.Equal(t, etag1, etag2, "Etag should not depend on lastSeen")
 	})
 
 	t.Run("GetLegacyDevice fails no such device", func(t *testing.T) {
@@ -454,6 +467,17 @@ func TestPostgresIntegration(t *testing.T) {
 		if err != store.ErrNoSuchDevice {
 			t.Fatalf("Expected ErrNoSuchDevice, not: %s", err.Error())
 		}
+	})
+
+	t.Run("GetLegacyDevicesEtag fails no such device", func(t *testing.T) {
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
+
+		etag, err := db.GetLegacyDevicesEtag(legacySyncCode)
+		assert.Equal(t, "", etag)
+		assert.Equal(t, store.ErrNoSuchDevice, err)
 	})
 
 	t.Run("Feeds", func(t *testing.T) {

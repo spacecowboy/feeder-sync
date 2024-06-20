@@ -120,6 +120,23 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	etag, err := s.store.GetLegacyDevicesEtag(syncCode)
+	if err != nil {
+		if err == store.ErrNoSuchDevice {
+			http.Error(w, DEVICE_NOT_REGISTERED, http.StatusBadRequest)
+			return
+		} else {
+			log.Printf("GetLegacyDevicesEtag error: %s", err.Error())
+			http.Error(w, "Something bad", http.StatusInternalServerError)
+			return
+		}
+	}
+	requestEtag := r.Header.Get("If-None-Match")
+	if matchesEtag(requestEtag, etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
 	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
 	if err != nil {
 		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
@@ -165,6 +182,11 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 		log.Printf("Could not encode devices: %s", err.Error())
 		http.Error(w, "Could not encode response", http.StatusInternalServerError)
 		return
+	}
+
+	if etag != "" {
+		w.Header().Add("Cache-Control", "private, must-revalidate")
+		w.Header().Add("ETag", etag)
 	}
 }
 

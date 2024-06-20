@@ -13,6 +13,7 @@ type DataStore interface {
 	AddDeviceToChainWithLegacy(syncCode string, deviceName string) (UserDevice, error)
 	GetDevices(userId uuid.UUID) ([]UserDevice, error)
 	GetLegacyDevice(syncCode string, deviceId int64) (UserDevice, error)
+	GetLegacyDevicesEtag(syncCode string) (string, error)
 	RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId int64) (int64, error)
 	UpdateLastSeenForDevice(device UserDevice) (int64, error)
 	GetArticles(userId uuid.UUID, sinceMillis int64) ([]Article, error)

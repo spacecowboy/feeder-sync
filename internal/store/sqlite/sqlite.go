@@ -308,6 +308,11 @@ func (s *SqliteStore) UpdateLastSeenForDevice(device store.UserDevice) (int64, e
 	return result.RowsAffected()
 }
 
+func (s *SqliteStore) GetLegacyDevicesEtag(syncCode string) (string, error) {
+	// Not supported yet, so just do a random string
+	return randomLegacySyncCode()
+}
+
 func (s *SqliteStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
 	rows, err := s.db.Query(
 		`

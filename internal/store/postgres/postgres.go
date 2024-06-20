@@ -220,6 +220,38 @@ func (s *PostgresStore) EnsureMigration(syncCode string, deviceId int64, deviceN
 	return userCount + deviceCount, nil
 }
 
+func (s *PostgresStore) GetLegacyDevicesEtag(syncCode string) (string, error) {
+	row := s.Db.QueryRow(
+		`
+		select
+		  sha256(
+				convert_to(
+					string_agg(device_name, '' order by device_name),
+					 'UTF8'))
+		from devices
+		inner join users on devices.user_db_id = users.db_id
+		where legacy_sync_code = $1
+		group by user_db_id
+		`,
+		syncCode,
+	)
+
+	var etag string
+
+	if err := row.Scan(&etag); err != nil {
+		if err == sql.ErrNoRows {
+			return "", store.ErrNoSuchDevice
+		} else {
+			return "", err
+		}
+	}
+
+	if etag == "" {
+		return "", store.ErrNoSuchDevice
+	}
+	return etag, nil
+}
+
 func (s *PostgresStore) GetLegacyDevice(syncCode string, deviceId int64) (store.UserDevice, error) {
 
 	row := s.Db.QueryRow(

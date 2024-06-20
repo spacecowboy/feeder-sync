@@ -156,9 +156,17 @@ func (s InMemoryStore) GetLegacyFeedsEtag(userId uuid.UUID) (string, error) {
 	return "", errors.New("BOOM")
 }
 
+func (s InMemoryStore) GetLegacyDevicesEtag(syncCode string) (string, error) {
+	return "", errors.New("BOOM")
+}
+
 type ExplodingStore struct{}
 
 func (s ExplodingStore) GetLegacyFeedsEtag(userId uuid.UUID) (string, error) {
+	return "", errors.New("BOOM")
+}
+
+func (s ExplodingStore) GetLegacyDevicesEtag(syncCode string) (string, error) {
 	return "", errors.New("BOOM")
 }
 
