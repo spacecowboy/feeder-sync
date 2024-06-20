@@ -319,6 +319,8 @@ func (s *SqliteStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.
 		from articles
 		inner join users on articles.user_db_id = users.db_id
 		where users.user_id = ? and updated_at > ?
+		order by read_time desc
+		limit 1000
 		`,
 		userId,
 		sinceMillis,
