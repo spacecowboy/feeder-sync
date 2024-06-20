@@ -152,7 +152,15 @@ func (s InMemoryStore) AcceptLegacyFeeds(feeds *store.LegacyFeeds) error {
 	return errors.New("BOOM")
 }
 
+func (s InMemoryStore) GetLegacyFeedsEtag(userId uuid.UUID) (string, error) {
+	return "", errors.New("BOOM")
+}
+
 type ExplodingStore struct{}
+
+func (s ExplodingStore) GetLegacyFeedsEtag(userId uuid.UUID) (string, error) {
+	return "", errors.New("BOOM")
+}
 
 func (s ExplodingStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
 	return store.UserDevice{}, errors.New("BOOM")

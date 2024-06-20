@@ -11,6 +11,7 @@ import (
 	"github.com/peterldowns/pgtestdb"
 	"github.com/peterldowns/pgtestdb/migrators/golangmigrator"
 	"github.com/spacecowboy/feeder-sync/internal/store"
+	"github.com/stretchr/testify/assert"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -494,6 +495,12 @@ func TestPostgresIntegration(t *testing.T) {
 		if count != 1 {
 			t.Fatalf("Count is not 1: %d", count)
 		}
+
+		etag, err := db.GetLegacyFeedsEtag(userDevice.UserId)
+		if err != nil {
+			t.Fatalf("Error: %s", err.Error())
+		}
+		assert.Equal(t, etag, "99")
 
 		// New update comes in
 		count, err = db.UpdateLegacyFeeds(

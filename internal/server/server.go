@@ -338,7 +338,7 @@ func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) handleGetFeedsV1(userDevice store.UserDevice, w http.ResponseWriter, r *http.Request) {
-	feeds, err := s.store.GetLegacyFeeds(userDevice.UserId)
+	feedsEtag, err := s.store.GetLegacyFeedsEtag(userDevice.UserId)
 	if err != nil {
 		if err == store.ErrNoFeeds {
 			w.WriteHeader(http.StatusNoContent)
@@ -351,9 +351,21 @@ func (s *FeederServer) handleGetFeedsV1(userDevice store.UserDevice, w http.Resp
 	}
 
 	requestEtag := r.Header.Get("If-None-Match")
-	if matchesEtag(requestEtag, feeds.Etag) {
+	if matchesEtag(requestEtag, feedsEtag) {
 		w.WriteHeader(http.StatusNotModified)
 		return
+	}
+
+	feeds, err := s.store.GetLegacyFeeds(userDevice.UserId)
+	if err != nil {
+		if err == store.ErrNoFeeds {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		} else {
+			log.Printf("GetLegacyFeeds error: %s", err.Error())
+			http.Error(w, "Something bad", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	response := GetFeedsResponseV1{

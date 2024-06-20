@@ -390,6 +390,30 @@ func (s *PostgresStore) GetDevices(userId uuid.UUID) ([]store.UserDevice, error)
 	return devices, nil
 }
 
+func (s PostgresStore) GetLegacyFeedsEtag(userId uuid.UUID) (string, error) {
+	row := s.Db.QueryRow(
+		`
+		select
+			etag
+		from legacy_feeds
+		inner join users on legacy_feeds.user_db_id = users.db_id
+		where user_id = $1
+		`,
+		userId,
+	)
+
+	var etag string
+
+	if err := row.Scan(&etag); err != nil {
+		if err == sql.ErrNoRows {
+			return "", store.ErrNoFeeds
+		} else {
+			return "", err
+		}
+	}
+	return etag, nil
+}
+
 func (s *PostgresStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, error) {
 	row := s.Db.QueryRow(
 		`
