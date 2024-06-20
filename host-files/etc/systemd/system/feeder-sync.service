@@ -1,6 +1,8 @@
 [Unit]
 Description=Feeder-sync server
 After=network.target
+After=postgresql.service
+Requires=postgresql.service
 
 [Service]
 ExecStart=/var/local/feeder-sync/webserver
@@ -10,6 +12,8 @@ StateDirectory=feeder-sync feeder-sync/migrations_sqlite feeder-sync/migrations_
 WorkingDirectory=/var/lib/feeder-sync
 User=feeder
 Group=feeder
+# Create override file with correct string on server with systemctl edit feeder-sync.service
+#Environment="FEEDER_SYNC_POSTGRES_CONN=postgresql://feeder:PW@localhost:5432/feeder"
 
 [Install]
 WantedBy=multi-user.target

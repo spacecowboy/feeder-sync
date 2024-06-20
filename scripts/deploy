@@ -3,14 +3,14 @@
 USER="root"
 HOST="172.104.137.77"
 BINARY_DIR="/var/local/feeder-sync"
-BINARY_NAME="webserver"
 STATE_DIR="/var/lib/feeder-sync"
 
 ssh "$USER@$HOST" systemctl stop feeder-sync.service || echo Feeder-sync not installed yet
 ssh "$USER@$HOST" mkdir -p "$BINARY_DIR"
 ssh "$USER@$HOST" mkdir -p "$STATE_DIR"
 
-scp "out/$BINARY_NAME" "$USER@$HOST:$BINARY_DIR"
+scp "out/webserver" "$USER@$HOST:$BINARY_DIR"
+scp "out/store_transfer" "$USER@$HOST:$BINARY_DIR"
 rsync -vzr --progress host-files/ "$USER@$HOST:/"
 scp -r "migrations_sqlite" "$USER@$HOST:$STATE_DIR"
 scp -r "migrations_postgres" "$USER@$HOST:$STATE_DIR"

@@ -6,7 +6,7 @@ USER="root"
 HOST="172.104.137.77"
 CADDY_VERSION="2.7.4"
 
-ssh "$USER@$HOST" apt install -y rsync
+ssh "$USER@$HOST" apt install -y rsync postgresql postgresql-client
 ssh "$USER@$HOST" curl -L https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.deb --output caddy_linux_amd64.deb
 ssh "$USER@$HOST" dpkg -i caddy_linux_amd64.deb
 
