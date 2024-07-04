@@ -2,20 +2,125 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/peterldowns/pgtestdb"
+	"github.com/peterldowns/pgtestdb/migrators/golangmigrator"
 	"github.com/spacecowboy/feeder-sync/internal/store"
+	postgresqlStore "github.com/spacecowboy/feeder-sync/internal/store/postgres"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"golang.org/x/exp/slices"
 )
 
+const (
+	user     = "username"
+	password = "password"
+	dbname   = "feedertest"
+)
+
+// NewDB is a helper that returns an open connection to a unique and isolated
+// test database, fully migrated and ready for you to query.
+func NewContainer(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, error) {
+	t.Helper()
+
+	container, err := postgres.RunContainer(
+		ctx,
+		testcontainers.WithImage("postgres:15"),
+		postgres.WithDatabase(dbname),
+		postgres.WithUsername(user),
+		postgres.WithPassword(password),
+		WithTmpfs(),
+		// postgres.WithInitScripts(
+		// 	"../../../migrations_postgres/1_create_tables.up.sql",
+		// 	"../../../migrations_postgres/2_create_articles.up.sql",
+		// 	"../../../migrations_postgres/3_add_updated_at.up.sql",
+		// 	"../../../migrations_postgres/4_create_legacy_feeds.up.sql",
+		// 	"../../../migrations_postgres/5_add_updated_at_index.up.sql",
+		// ),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(5*time.Second),
+		),
+	)
+
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	// Clean up the container after the test is complete
+	t.Cleanup(func() {
+		if err := container.Terminate(ctx); err != nil {
+			t.Fatalf("failed to terminate container: %s", err)
+		}
+	})
+
+	return container, nil
+}
+
+func WithTmpfs() testcontainers.CustomizeRequestOption {
+	return func(req *testcontainers.GenericContainerRequest) {
+		req.Tmpfs = map[string]string{"/var/lib/postgresql/data": "rw"}
+		req.Env["PGDATA"] = "/var/lib/postgresql/data"
+		req.Cmd = []string{
+			"postgres",
+			"-c",
+			// turn off fsync for speed
+			"fsync=off",
+			"-c",
+			// log everything for debugging
+			"log_statement=all",
+		}
+	}
+}
+
+func NewStore(t *testing.T, ctx context.Context, container *postgres.PostgresContainer) postgresqlStore.PostgresStore {
+	t.Helper()
+
+	host, err := container.Host(ctx)
+	if err != nil {
+		t.Fatalf("Failed to get host: %s", err.Error())
+	}
+
+	port, err := container.MappedPort(ctx, "5432/tcp")
+	if err != nil {
+		t.Fatalf("Failed to get port: %s", err.Error())
+	}
+
+	conf := pgtestdb.Config{
+		DriverName: "postgres",
+		User:       user,
+		Password:   password,
+		Database:   dbname,
+		Host:       host,
+		Port:       port.Port(),
+		Options:    "sslmode=disable",
+	}
+
+	migrator := golangmigrator.New("../../migrations_postgres")
+	return postgresqlStore.PostgresStore{
+		Db: pgtestdb.New(t, conf, migrator),
+	}
+}
+
 func TestJoinSyncChainV1(t *testing.T) {
-	tempdir := t.TempDir()
-	server, err := NewSqliteServer(tempdir)
+	ctx := context.Background()
+	container, err := NewContainer(t, ctx)
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	db := NewStore(t, ctx, container)
+	defer db.Close()
+
+	server, err := NewServerWithStore(&db)
 	if err != nil {
 		t.Fatalf("It blew up %v", err.Error())
 	}
@@ -27,11 +132,11 @@ func TestJoinSyncChainV1(t *testing.T) {
 	}()
 	goodSyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 	goodDeviceId := int64(1234)
-	_, err = server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
+	_, err = server.store.EnsureMigration(ctx, goodSyncCode, goodDeviceId, "foodevice")
 	if err != nil {
 		t.Fatalf("Failed to insert device: %s", err.Error())
 	}
-	userDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+	userDevice, err := server.store.GetLegacyDevice(ctx, goodSyncCode, goodDeviceId)
 	if err != nil {
 		t.Fatalf("Got error: %s", err.Error())
 	}
@@ -145,7 +250,7 @@ func TestJoinSyncChainV1(t *testing.T) {
 			t.Errorf("Reponse is not json content-type but: %s", ct)
 		}
 
-		devices, err := server.store.GetDevices(userDevice.UserId)
+		devices, err := server.store.GetDevices(ctx, userDevice.UserId)
 
 		if err != nil {
 			t.Fatalf(err.Error())
@@ -167,8 +272,16 @@ func TestJoinSyncChainV1(t *testing.T) {
 }
 
 func TestFeedsV1(t *testing.T) {
-	tempdir := t.TempDir()
-	server, err := NewSqliteServer(tempdir)
+	ctx := context.Background()
+	container, err := NewContainer(t, ctx)
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	db := NewStore(t, ctx, container)
+	defer db.Close()
+
+	server, err := NewServerWithStore(&db)
 	if err != nil {
 		t.Fatalf("It blew up %v", err.Error())
 	}
@@ -180,11 +293,11 @@ func TestFeedsV1(t *testing.T) {
 	}()
 	goodSyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 	goodDeviceId := int64(1234)
-	_, err = server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
+	_, err = server.store.EnsureMigration(ctx, goodSyncCode, goodDeviceId, "foodevice")
 	if err != nil {
 		t.Fatalf("Failed to insert device: %s", err.Error())
 	}
-	userDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+	userDevice, err := server.store.GetLegacyDevice(ctx, goodSyncCode, goodDeviceId)
 	if err != nil {
 		t.Fatalf("Got error: %s", err.Error())
 	}
@@ -288,7 +401,16 @@ func TestFeedsV1(t *testing.T) {
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
 		request.Header.Add("X-FEEDER-DEVICE-ID", fmt.Sprintf("%d", userDevice.LegacyDeviceId))
-		server := newFeederServer()
+		ctx := context.Background()
+		container, err := NewContainer(t, ctx)
+		if err != nil {
+			t.Fatalf("Failed to start postgres container: %s", err.Error())
+		}
+
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		server, err := NewServerWithStore(&db)
 		server.ServeHTTP(response, request)
 
 		if want := http.StatusMethodNotAllowed; response.Code != want {
@@ -301,7 +423,16 @@ func TestFeedsV1(t *testing.T) {
 		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		ctx := context.Background()
+		container, err := NewContainer(t, ctx)
+		if err != nil {
+			t.Fatalf("Failed to start postgres container: %s", err.Error())
+		}
+
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		server, err := NewServerWithStore(&db)
 		server.ServeHTTP(response, request)
 
 		if want := http.StatusBadRequest; response.Code != want {
@@ -322,7 +453,7 @@ func TestFeedsV1(t *testing.T) {
 			t.Fatalf("want %d, got %d", want, response.Code)
 		}
 
-		body := string(response.Body.Bytes())
+		body := response.Body.String()
 
 		// Used by client to self-leave
 		if !strings.Contains(body, "Device not registered") {
@@ -547,8 +678,16 @@ func TestFeedsV1(t *testing.T) {
 }
 
 func TestReadMarkV1(t *testing.T) {
-	tempdir := t.TempDir()
-	server, err := NewSqliteServer(tempdir)
+	ctx := context.Background()
+	container, err := NewContainer(t, ctx)
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	db := NewStore(t, ctx, container)
+	defer db.Close()
+
+	server, err := NewServerWithStore(&db)
 	if err != nil {
 		t.Fatalf("It blew up %v", err.Error())
 	}
@@ -560,11 +699,11 @@ func TestReadMarkV1(t *testing.T) {
 	}()
 	goodSyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 	goodDeviceId := int64(1234)
-	_, err = server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
+	_, err = server.store.EnsureMigration(ctx, goodSyncCode, goodDeviceId, "foodevice")
 	if err != nil {
 		t.Fatalf("Failed to insert device: %s", err.Error())
 	}
-	userDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+	userDevice, err := server.store.GetLegacyDevice(ctx, goodSyncCode, goodDeviceId)
 	if err != nil {
 		t.Fatalf("Got error: %s", err.Error())
 	}
@@ -666,7 +805,16 @@ func TestReadMarkV1(t *testing.T) {
 		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		ctx := context.Background()
+		container, err := NewContainer(t, ctx)
+		if err != nil {
+			t.Fatalf("Failed to start postgres container: %s", err.Error())
+		}
+
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		server, err := NewServerWithStore(&db)
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -682,7 +830,16 @@ func TestReadMarkV1(t *testing.T) {
 		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		ctx := context.Background()
+		container, err := NewContainer(t, ctx)
+		if err != nil {
+			t.Fatalf("Failed to start postgres container: %s", err.Error())
+		}
+
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		server, err := NewServerWithStore(&db)
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -768,8 +925,17 @@ func TestReadMarkV1(t *testing.T) {
 		response := httptest.NewRecorder()
 
 		request.Header.Add("X-FEEDER-ID", goodSyncCode)
-		server := newFeederServer()
-		server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
+		ctx := context.Background()
+		container, err := NewContainer(t, ctx)
+		if err != nil {
+			t.Fatalf("Failed to start postgres container: %s", err.Error())
+		}
+
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		server, err := NewServerWithStore(&db)
+		server.store.EnsureMigration(ctx, goodSyncCode, goodDeviceId, "foodevice")
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -801,7 +967,7 @@ func TestReadMarkV1(t *testing.T) {
 		}
 
 		// Also check that lastSeen has been updated
-		updatedDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+		updatedDevice, err := server.store.GetLegacyDevice(ctx, goodSyncCode, goodDeviceId)
 		if err != nil {
 			t.Fatalf("Got error: %s", err.Error())
 		}
@@ -938,7 +1104,7 @@ func TestReadMarkV1(t *testing.T) {
 		}
 
 		// Also check that lastSeen has been updated
-		preGetDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+		preGetDevice, err := server.store.GetLegacyDevice(ctx, goodSyncCode, goodDeviceId)
 		if err != nil {
 			t.Fatalf("Got error: %s", err.Error())
 		}
@@ -981,7 +1147,7 @@ func TestReadMarkV1(t *testing.T) {
 		}
 
 		// Also check that lastSeen has been updated
-		updatedDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+		updatedDevice, err := server.store.GetLegacyDevice(ctx, goodSyncCode, goodDeviceId)
 		if err != nil {
 			t.Fatalf("Got error: %s", err.Error())
 		}
@@ -993,8 +1159,16 @@ func TestReadMarkV1(t *testing.T) {
 }
 
 func TestCreateSyncChainV1(t *testing.T) {
-	tempdir := t.TempDir()
-	server, err := NewSqliteServer(tempdir)
+	ctx := context.Background()
+	container, err := NewContainer(t, ctx)
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	db := NewStore(t, ctx, container)
+	defer db.Close()
+
+	server, err := NewServerWithStore(&db)
 	if err != nil {
 		t.Fatalf("It blew up %v", err.Error())
 	}
@@ -1089,7 +1263,16 @@ func TestCreateSyncChainV1(t *testing.T) {
 		response := httptest.NewRecorder()
 		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 
-		server := newFeederServer()
+		ctx := context.Background()
+		container, err := NewContainer(t, ctx)
+		if err != nil {
+			t.Fatalf("Failed to start postgres container: %s", err.Error())
+		}
+
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		server, err := NewServerWithStore(&db)
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -1105,7 +1288,16 @@ func TestCreateSyncChainV1(t *testing.T) {
 		response := httptest.NewRecorder()
 		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 
-		server := newFeederServer()
+		ctx := context.Background()
+		container, err := NewContainer(t, ctx)
+		if err != nil {
+			t.Fatalf("Failed to start postgres container: %s", err.Error())
+		}
+
+		db := NewStore(t, ctx, container)
+		defer db.Close()
+
+		server, err := NewServerWithStore(&db)
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -1145,8 +1337,16 @@ func TestCreateSyncChainV1(t *testing.T) {
 }
 
 func TestDevicesV1(t *testing.T) {
-	tempdir := t.TempDir()
-	server, err := NewSqliteServer(tempdir)
+	ctx := context.Background()
+	container, err := NewContainer(t, ctx)
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	db := NewStore(t, ctx, container)
+	defer db.Close()
+
+	server, err := NewServerWithStore(&db)
 	if err != nil {
 		t.Fatalf("It blew up %v", err.Error())
 	}
@@ -1158,11 +1358,11 @@ func TestDevicesV1(t *testing.T) {
 	}()
 	goodSyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 	goodDeviceId := int64(1234)
-	_, err = server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
+	_, err = server.store.EnsureMigration(ctx, goodSyncCode, goodDeviceId, "foodevice")
 	if err != nil {
 		t.Fatalf("Failed to insert device: %s", err.Error())
 	}
-	userDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+	userDevice, err := server.store.GetLegacyDevice(ctx, goodSyncCode, goodDeviceId)
 	if err != nil {
 		t.Fatalf("Got error: %s", err.Error())
 	}
@@ -1451,12 +1651,12 @@ func TestDevicesV1(t *testing.T) {
 			t.Errorf("Failed to delete device: %d", len(devices.Devices))
 		}
 
-		_, err = server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+		_, err = server.store.GetLegacyDevice(ctx, goodSyncCode, goodDeviceId)
 		if err != store.ErrNoSuchDevice {
 			t.Errorf("Device is still in store: %q", err)
 		}
 
-		allDevices, err := server.store.GetDevices(userDevice.UserId)
+		allDevices, err := server.store.GetDevices(ctx, userDevice.UserId)
 		if err != nil {
 			t.Errorf("What? %s", err.Error())
 		}

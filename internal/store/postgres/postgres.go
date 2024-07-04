@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	crand "crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -70,7 +71,7 @@ func randomLegacySyncCode() (string, error) {
 	return syncCode, nil
 }
 
-func (s *PostgresStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
+func (s *PostgresStore) RegisterNewUser(ctx context.Context, deviceName string) (store.UserDevice, error) {
 	userDevice := store.UserDevice{
 		UserId:         uuid.New(),
 		DeviceId:       uuid.New(),
@@ -89,7 +90,8 @@ func (s *PostgresStore) RegisterNewUser(deviceName string) (store.UserDevice, er
 	userDevice.LegacySyncCode = legacySyncCode
 
 	// Insert user
-	err = s.Db.QueryRow(
+	err = s.Db.QueryRowContext(
+		ctx,
 		"INSERT INTO users (user_id, legacy_sync_code) VALUES ($1, $2) RETURNING db_id",
 		userDevice.UserId,
 		userDevice.LegacySyncCode,
@@ -99,12 +101,12 @@ func (s *PostgresStore) RegisterNewUser(deviceName string) (store.UserDevice, er
 		return userDevice, err
 	}
 
-	return s.AddDeviceToUser(userDevice)
+	return s.AddDeviceToUser(ctx, userDevice)
 }
 
-func (s *PostgresStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (store.UserDevice, error) {
+func (s *PostgresStore) AddDeviceToChain(ctx context.Context, userId uuid.UUID, deviceName string) (store.UserDevice, error) {
 	var userDbId int64
-	row := s.Db.QueryRow("SELECT db_id FROM users WHERE user_id = $1 limit 1", userId)
+	row := s.Db.QueryRowContext(ctx, "SELECT db_id FROM users WHERE user_id = $1 limit 1", userId)
 	if err := row.Scan(&userDbId); err != nil {
 		if err == sql.ErrNoRows {
 			return store.UserDevice{}, errors.New("user not found")
@@ -128,12 +130,12 @@ func (s *PostgresStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (s
 		LegacyDeviceId: rand.Int63(),
 	}
 
-	return s.AddDeviceToUser(userDevice)
+	return s.AddDeviceToUser(ctx, userDevice)
 }
 
-func (s *PostgresStore) AddDeviceToChainWithLegacy(syncCode string, deviceName string) (store.UserDevice, error) {
+func (s *PostgresStore) AddDeviceToChainWithLegacy(ctx context.Context, syncCode string, deviceName string) (store.UserDevice, error) {
 	var userDbId int64
-	row := s.Db.QueryRow("SELECT db_id FROM users WHERE legacy_sync_code = $1 limit 1", syncCode)
+	row := s.Db.QueryRowContext(ctx, "SELECT db_id FROM users WHERE legacy_sync_code = $1 limit 1", syncCode)
 	if err := row.Scan(&userDbId); err != nil {
 		if err == sql.ErrNoRows {
 			return store.UserDevice{}, errors.New("user not found")
@@ -151,13 +153,14 @@ func (s *PostgresStore) AddDeviceToChainWithLegacy(syncCode string, deviceName s
 		LegacyDeviceId: rand.Int63(),
 	}
 
-	return s.AddDeviceToUser(userDevice)
+	return s.AddDeviceToUser(ctx, userDevice)
 }
 
-func (s *PostgresStore) AddDeviceToUser(userDevice store.UserDevice) (store.UserDevice, error) {
+func (s *PostgresStore) AddDeviceToUser(ctx context.Context, userDevice store.UserDevice) (store.UserDevice, error) {
 	var dbId int64
 	// Insert device
-	if err := s.Db.QueryRow(
+	if err := s.Db.QueryRowContext(
+		ctx,
 		"INSERT INTO devices (device_id, legacy_device_id, device_name, last_seen, user_db_id) VALUES ($1, $2, $3, $4, $5) RETURNING db_id",
 		userDevice.DeviceId,
 		userDevice.LegacyDeviceId,
@@ -172,7 +175,7 @@ func (s *PostgresStore) AddDeviceToUser(userDevice store.UserDevice) (store.User
 	return userDevice, nil
 }
 
-func (s *PostgresStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error) {
+func (s *PostgresStore) EnsureMigration(ctx context.Context, syncCode string, deviceId int64, deviceName string) (int64, error) {
 	if len(syncCode) != 64 {
 		return 0, fmt.Errorf("not a 64 char synccode: %q", syncCode)
 	}
@@ -183,12 +186,12 @@ func (s *PostgresStore) EnsureMigration(syncCode string, deviceId int64, deviceN
 	var deviceDbId int64
 
 	// Insert user
-	if err := s.Db.QueryRow("INSERT INTO users (user_id, legacy_sync_code) VALUES ($1, $2) RETURNING db_id", uuid.New(), syncCode).Scan(&userDbId); err != nil {
+	if err := s.Db.QueryRowContext(ctx, "INSERT INTO users (user_id, legacy_sync_code) VALUES ($1, $2) RETURNING db_id", uuid.New(), syncCode).Scan(&userDbId); err != nil {
 		if !strings.Contains(err.Error(), "idx_users_legacy_sync_code") {
 			return userCount + deviceCount, fmt.Errorf("insert user: %v", err)
 		}
 
-		row := s.Db.QueryRow("SELECT db_id FROM users WHERE legacy_sync_code = $1 limit 1", syncCode)
+		row := s.Db.QueryRowContext(ctx, "SELECT db_id FROM users WHERE legacy_sync_code = $1 limit 1", syncCode)
 		if err := row.Scan(&userDbId); err != nil {
 			if err == sql.ErrNoRows {
 				return userCount + deviceCount, fmt.Errorf("no user with syncCode %q", syncCode)
@@ -201,7 +204,8 @@ func (s *PostgresStore) EnsureMigration(syncCode string, deviceId int64, deviceN
 	}
 
 	// Insert device
-	if err := s.Db.QueryRow(
+	if err := s.Db.QueryRowContext(
+		ctx,
 		"INSERT INTO devices (device_id, legacy_device_id, device_name, last_seen, user_db_id) VALUES ($1, $2, $3, $4, $5) RETURNING db_id",
 		uuid.New(),
 		deviceId,
@@ -220,8 +224,9 @@ func (s *PostgresStore) EnsureMigration(syncCode string, deviceId int64, deviceN
 	return userCount + deviceCount, nil
 }
 
-func (s *PostgresStore) GetLegacyDevicesEtag(syncCode string) (string, error) {
-	row := s.Db.QueryRow(
+func (s *PostgresStore) GetLegacyDevicesEtag(ctx context.Context, syncCode string) (string, error) {
+	row := s.Db.QueryRowContext(
+		ctx,
 		`
 		select
 		  sha256(
@@ -252,9 +257,10 @@ func (s *PostgresStore) GetLegacyDevicesEtag(syncCode string) (string, error) {
 	return etag, nil
 }
 
-func (s *PostgresStore) GetLegacyDevice(syncCode string, deviceId int64) (store.UserDevice, error) {
+func (s *PostgresStore) GetLegacyDevice(ctx context.Context, syncCode string, deviceId int64) (store.UserDevice, error) {
 
-	row := s.Db.QueryRow(
+	row := s.Db.QueryRowContext(
+		ctx,
 		`
 		select
 		  users.db_id,
@@ -288,8 +294,9 @@ func (s *PostgresStore) GetLegacyDevice(syncCode string, deviceId int64) (store.
 	return userDevice, nil
 }
 
-func (s *PostgresStore) UpdateLastSeenForDevice(device store.UserDevice) (int64, error) {
-	result, err := s.Db.Exec(
+func (s *PostgresStore) UpdateLastSeenForDevice(ctx context.Context, device store.UserDevice) (int64, error) {
+	result, err := s.Db.ExecContext(
+		ctx,
 		`
 		update devices
 		  set last_seen = $1
@@ -306,8 +313,9 @@ func (s *PostgresStore) UpdateLastSeenForDevice(device store.UserDevice) (int64,
 	return result.RowsAffected()
 }
 
-func (s *PostgresStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
-	rows, err := s.Db.Query(
+func (s *PostgresStore) GetArticles(ctx context.Context, userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
+	rows, err := s.Db.QueryContext(
+		ctx,
 		`
 		select
 		  user_id,
@@ -348,9 +356,10 @@ func (s *PostgresStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]stor
 	return articles, nil
 }
 
-func (s *PostgresStore) AddLegacyArticle(userDbId int64, identifier string) error {
+func (s *PostgresStore) AddLegacyArticle(ctx context.Context, userDbId int64, identifier string) error {
 	now := time.Now().UnixMilli()
-	_, err := s.Db.Exec(
+	_, err := s.Db.ExecContext(
+		ctx,
 		`insert into articles (user_db_id, identifier, read_time, updated_at) values($1, $2 ,$3, $4)`,
 		userDbId,
 		identifier,
@@ -366,8 +375,9 @@ func (s *PostgresStore) AddLegacyArticle(userDbId int64, identifier string) erro
 	return nil
 }
 
-func (s *PostgresStore) RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId int64) (int64, error) {
-	result, err := s.Db.Exec(
+func (s *PostgresStore) RemoveDeviceWithLegacy(ctx context.Context, userDbId int64, legacyDeviceId int64) (int64, error) {
+	result, err := s.Db.ExecContext(
+		ctx,
 		`
 		delete from devices
 		  where user_db_id = $1 and legacy_device_id = $2
@@ -382,8 +392,9 @@ func (s *PostgresStore) RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId in
 	return result.RowsAffected()
 }
 
-func (s *PostgresStore) GetDevices(userId uuid.UUID) ([]store.UserDevice, error) {
-	rows, err := s.Db.Query(
+func (s *PostgresStore) GetDevices(ctx context.Context, userId uuid.UUID) ([]store.UserDevice, error) {
+	rows, err := s.Db.QueryContext(
+		ctx,
 		`
 		select
 		  users.db_id,
@@ -424,8 +435,9 @@ func (s *PostgresStore) GetDevices(userId uuid.UUID) ([]store.UserDevice, error)
 	return devices, nil
 }
 
-func (s PostgresStore) GetLegacyFeedsEtag(userId uuid.UUID) (string, error) {
-	row := s.Db.QueryRow(
+func (s PostgresStore) GetLegacyFeedsEtag(ctx context.Context, userId uuid.UUID) (string, error) {
+	row := s.Db.QueryRowContext(
+		ctx,
 		`
 		select
 			etag
@@ -448,8 +460,9 @@ func (s PostgresStore) GetLegacyFeedsEtag(userId uuid.UUID) (string, error) {
 	return etag, nil
 }
 
-func (s *PostgresStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, error) {
-	row := s.Db.QueryRow(
+func (s *PostgresStore) GetLegacyFeeds(ctx context.Context, userId uuid.UUID) (store.LegacyFeeds, error) {
+	row := s.Db.QueryRowContext(
+		ctx,
 		`
 		select
 			user_id,
@@ -475,8 +488,9 @@ func (s *PostgresStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, err
 	return feeds, nil
 }
 
-func (s *PostgresStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag string) (int64, error) {
-	result, err := s.Db.Exec(
+func (s *PostgresStore) UpdateLegacyFeeds(ctx context.Context, userDbId int64, contentHash int64, content string, etag string) (int64, error) {
+	result, err := s.Db.ExecContext(
+		ctx,
 		`
 		insert into
 		  legacy_feeds (user_db_id, content_hash, content, etag)
@@ -498,8 +512,9 @@ func (s *PostgresStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, con
 	return result.RowsAffected()
 }
 
-func (s *PostgresStore) TransferUsersToStore(toStore store.DataStore) error {
-	rows, err := s.Db.Query(
+func (s *PostgresStore) TransferUsersToStore(ctx context.Context, toStore store.TransferStore) error {
+	rows, err := s.Db.QueryContext(
+		ctx,
 		`
 		select
 		  db_id,
@@ -521,7 +536,7 @@ func (s *PostgresStore) TransferUsersToStore(toStore store.DataStore) error {
 			return err
 		}
 
-		toStore.AcceptUser(&user)
+		toStore.AcceptUser(ctx, &user)
 	}
 	if err = rows.Err(); err != nil {
 		return err
@@ -529,9 +544,10 @@ func (s *PostgresStore) TransferUsersToStore(toStore store.DataStore) error {
 	return nil
 }
 
-func (s *PostgresStore) AcceptUser(user *store.User) error {
+func (s *PostgresStore) AcceptUser(ctx context.Context, user *store.User) error {
 	// Insert user
-	_, err := s.Db.Exec(
+	_, err := s.Db.ExecContext(
+		ctx,
 		"INSERT INTO users (db_id, user_id, legacy_sync_code) VALUES ($1, $2, $3)",
 		user.UserDbId,
 		user.UserId,
@@ -540,8 +556,9 @@ func (s *PostgresStore) AcceptUser(user *store.User) error {
 	return err
 }
 
-func (s *PostgresStore) TransferDevicesToStore(toStore store.DataStore) error {
-	rows, err := s.Db.Query(
+func (s *PostgresStore) TransferDevicesToStore(ctx context.Context, toStore store.TransferStore) error {
+	rows, err := s.Db.QueryContext(
+		ctx,
 		`
 		select
 		  user_db_id,
@@ -565,7 +582,7 @@ func (s *PostgresStore) TransferDevicesToStore(toStore store.DataStore) error {
 			return err
 		}
 
-		toStore.AcceptDevice(&userDevice)
+		toStore.AcceptDevice(ctx, &userDevice)
 	}
 	if err = rows.Err(); err != nil {
 		return err
@@ -573,9 +590,10 @@ func (s *PostgresStore) TransferDevicesToStore(toStore store.DataStore) error {
 	return nil
 }
 
-func (s *PostgresStore) AcceptDevice(device *store.UserDevice) error {
+func (s *PostgresStore) AcceptDevice(ctx context.Context, device *store.UserDevice) error {
 	// Insert device
-	_, err := s.Db.Exec(
+	_, err := s.Db.ExecContext(
+		ctx,
 		"INSERT INTO devices (device_id, legacy_device_id, device_name, last_seen, user_db_id) VALUES ($1, $2, $3, $4, $5)",
 		device.DeviceId,
 		device.LegacyDeviceId,
@@ -586,8 +604,9 @@ func (s *PostgresStore) AcceptDevice(device *store.UserDevice) error {
 	return err
 }
 
-func (s *PostgresStore) TransferArticlesToStore(toStore store.DataStore) error {
-	rows, err := s.Db.Query(
+func (s *PostgresStore) TransferArticlesToStore(ctx context.Context, toStore store.TransferStore) error {
+	rows, err := s.Db.QueryContext(
+		ctx,
 		`
 		select
 		  read_time,
@@ -610,7 +629,7 @@ func (s *PostgresStore) TransferArticlesToStore(toStore store.DataStore) error {
 			return err
 		}
 
-		toStore.AcceptArticle(&article)
+		toStore.AcceptArticle(ctx, &article)
 	}
 	if err = rows.Err(); err != nil {
 		return err
@@ -618,9 +637,10 @@ func (s *PostgresStore) TransferArticlesToStore(toStore store.DataStore) error {
 	return nil
 }
 
-func (s *PostgresStore) AcceptArticle(article *store.Article) error {
+func (s *PostgresStore) AcceptArticle(ctx context.Context, article *store.Article) error {
 	// Insert article
-	_, err := s.Db.Exec(
+	_, err := s.Db.ExecContext(
+		ctx,
 		`insert into articles (user_db_id, identifier, read_time, updated_at) values($1, $2, $3, $4)`,
 		article.UserDbId,
 		article.Identifier,
@@ -630,8 +650,9 @@ func (s *PostgresStore) AcceptArticle(article *store.Article) error {
 	return err
 }
 
-func (s *PostgresStore) TransferLegacyFeedsToStore(toStore store.DataStore) error {
-	rows, err := s.Db.Query(
+func (s *PostgresStore) TransferLegacyFeedsToStore(ctx context.Context, toStore store.TransferStore) error {
+	rows, err := s.Db.QueryContext(
+		ctx,
 		`
 		select
 		  content_hash,
@@ -654,7 +675,7 @@ func (s *PostgresStore) TransferLegacyFeedsToStore(toStore store.DataStore) erro
 			return err
 		}
 
-		toStore.AcceptLegacyFeeds(&feeds)
+		toStore.AcceptLegacyFeeds(ctx, &feeds)
 	}
 
 	if err = rows.Err(); err != nil {
@@ -663,9 +684,10 @@ func (s *PostgresStore) TransferLegacyFeedsToStore(toStore store.DataStore) erro
 	return nil
 }
 
-func (s *PostgresStore) AcceptLegacyFeeds(feeds *store.LegacyFeeds) error {
+func (s *PostgresStore) AcceptLegacyFeeds(ctx context.Context, feeds *store.LegacyFeeds) error {
 	// Insert legacy feeds
-	_, err := s.Db.Exec(
+	_, err := s.Db.ExecContext(
+		ctx,
 		`
 		insert into
 		  legacy_feeds (user_db_id, content_hash, content, etag)

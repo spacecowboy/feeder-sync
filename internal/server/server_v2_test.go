@@ -2,18 +2,25 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/spacecowboy/feeder-sync/internal/store"
-
 	"github.com/google/uuid"
 )
 
 func TestMigrateV2(t *testing.T) {
+	ctx := context.Background()
+	container, err := NewContainer(t, ctx)
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	// t.Parallel()
+
 	t.Run("Migrate errors if not cloudflare worker", func(t *testing.T) {
 		jsonRequest := MigrateRequestV2{
 			SyncCode:   "foo",
@@ -26,13 +33,12 @@ func TestMigrateV2(t *testing.T) {
 
 		response := httptest.NewRecorder()
 
-		store := InMemoryStore{
-			userDevices: make(map[string][]store.UserDevice),
-			calls:       make(map[string]int),
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
 		}
-		server, _ := NewServerWithStore(
-			store,
-		)
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -56,13 +62,12 @@ func TestMigrateV2(t *testing.T) {
 
 		response := httptest.NewRecorder()
 
-		store := InMemoryStore{
-			userDevices: make(map[string][]store.UserDevice),
-			calls:       make(map[string]int),
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
 		}
-		server, _ := NewServerWithStore(
-			store,
-		)
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -72,41 +77,27 @@ func TestMigrateV2(t *testing.T) {
 			t.Errorf("want %d, got %d", want, got)
 		}
 	})
-
-	t.Run("Migrate calls store", func(t *testing.T) {
-		request := newMigrateRequestV2(t, "foo sync", 999, "bar device")
-
-		response := httptest.NewRecorder()
-
-		store := InMemoryStore{
-			userDevices: make(map[string][]store.UserDevice),
-			calls:       make(map[string]int),
-		}
-		server, _ := NewServerWithStore(
-			store,
-		)
-		server.ServeHTTP(response, request)
-
-		got := response.Code
-		want := 204
-
-		if got != want {
-			t.Errorf("want %d, got %d", want, got)
-		}
-
-		calls := store.calls["EnsureMigration"]
-		if calls != 1 {
-			t.Errorf("EnsureMigration expected 1 call but was %d", calls)
-		}
-	})
 }
 
 func TestJoinSyncChainV2(t *testing.T) {
+	ctx := context.Background()
+	container, err := NewContainer(t, ctx)
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	t.Parallel()
+
 	t.Run("post missing basic auth fails 401", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v2/join", nil)
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -123,7 +114,12 @@ func TestJoinSyncChainV2(t *testing.T) {
 
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -140,7 +136,12 @@ func TestJoinSyncChainV2(t *testing.T) {
 
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -157,7 +158,12 @@ func TestJoinSyncChainV2(t *testing.T) {
 
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -174,7 +180,12 @@ func TestJoinSyncChainV2(t *testing.T) {
 
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -190,7 +201,12 @@ func TestJoinSyncChainV2(t *testing.T) {
 
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -202,7 +218,12 @@ func TestJoinSyncChainV2(t *testing.T) {
 	})
 
 	t.Run("Join a sync chain works", func(t *testing.T) {
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		userId := createSyncChainV2(t, server)
 		request := newJoinChainRequestV2(t, userId, "deviceJoin")
 
@@ -223,11 +244,24 @@ func TestJoinSyncChainV2(t *testing.T) {
 }
 
 func TestCreateSyncChainV2(t *testing.T) {
+	ctx := context.Background()
+	container, err := NewContainer(t, ctx)
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	t.Parallel()
+
 	t.Run("post missing basic auth fails 401", func(t *testing.T) {
 		request, _ := http.NewRequest(http.MethodPost, "/api/v2/create", nil)
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -244,7 +278,12 @@ func TestCreateSyncChainV2(t *testing.T) {
 
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -261,7 +300,12 @@ func TestCreateSyncChainV2(t *testing.T) {
 
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		gotCode1 := response.Code
@@ -293,7 +337,12 @@ func TestCreateSyncChainV2(t *testing.T) {
 		request := newCreateRequestV2(t, "device1", "", 0)
 		responseFirst := httptest.NewRecorder()
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(responseFirst, request)
 
 		gotCode1 := responseFirst.Code
@@ -369,7 +418,12 @@ func TestCreateSyncChainV2(t *testing.T) {
 		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -385,7 +439,12 @@ func TestCreateSyncChainV2(t *testing.T) {
 		request.SetBasicAuth(HARDCODED_USER, HARDCODED_PASSWORD)
 		response := httptest.NewRecorder()
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -402,7 +461,12 @@ func TestCreateSyncChainV2(t *testing.T) {
 			header: make(map[string][]string),
 		}
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -419,7 +483,12 @@ func TestCreateSyncChainV2(t *testing.T) {
 			header: make(map[string][]string),
 		}
 
-		server := newFeederServer()
+		store := NewStore(t, ctx, container)
+		defer store.Close()
+		server, err := NewServerWithStore(&store)
+		if err != nil {
+			t.Fatalf("It blew up %v", err.Error())
+		}
 		server.ServeHTTP(response, request)
 
 		got := response.Code
@@ -430,17 +499,6 @@ func TestCreateSyncChainV2(t *testing.T) {
 		}
 	})
 
-}
-
-func newFeederServer() *FeederServer {
-	server, _ := NewServerWithStore(
-		InMemoryStore{
-			userDevices: make(map[string][]store.UserDevice),
-			calls:       make(map[string]int),
-		},
-	)
-
-	return server
 }
 
 type BadResponseWriter struct {

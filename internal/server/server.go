@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,29 +9,16 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/felixge/httpsnoop"
 	"github.com/spacecowboy/feeder-sync/internal/store"
 	"github.com/spacecowboy/feeder-sync/internal/store/postgres"
-	"github.com/spacecowboy/feeder-sync/internal/store/sqlite"
 )
 
 type FeederServer struct {
 	store   store.DataStore
 	handler http.Handler
-}
-
-func NewServerWithSqlite() (*FeederServer, error) {
-	store, err := sqlite.New("./sqlite.db")
-	if err != nil {
-		return nil, err
-	}
-
-	if err := store.RunMigrations("file://./migrations_sqlite"); err != nil {
-		return nil, err
-	}
-
-	return NewServerWithStore(&store)
 }
 
 func NewServerWithPostgres(conn string) (*FeederServer, error) {
@@ -91,6 +79,9 @@ func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
 	if !s.ensureBasicAuthOrError(w, r) {
 		return
 	}
@@ -120,7 +111,7 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	etag, err := s.store.GetLegacyDevicesEtag(syncCode)
+	etag, err := s.store.GetLegacyDevicesEtag(ctx, syncCode)
 	if err != nil {
 		if err == store.ErrNoSuchDevice {
 			http.Error(w, DEVICE_NOT_REGISTERED, http.StatusBadRequest)
@@ -137,7 +128,7 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
+	userDevice, err := s.store.GetLegacyDevice(ctx, syncCode, legacyDeviceId)
 	if err != nil {
 		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
 		if err == store.ErrNoSuchDevice {
@@ -149,14 +140,14 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	_, err = s.store.UpdateLastSeenForDevice(userDevice)
+	_, err = s.store.UpdateLastSeenForDevice(ctx, userDevice)
 	if err != nil {
 		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
 		return
 	}
 
-	devices, err := s.store.GetDevices(userDevice.UserId)
+	devices, err := s.store.GetDevices(ctx, userDevice.UserId)
 	if err != nil {
 		log.Printf("Failed to fetch devices for user %s: %s", userDevice.UserId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
@@ -191,6 +182,9 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
 	if !s.ensureBasicAuthOrError(w, r) {
 		return
 	}
@@ -225,7 +219,7 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
+	userDevice, err := s.store.GetLegacyDevice(ctx, syncCode, legacyDeviceId)
 	if err != nil {
 		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
 		if err == store.ErrNoSuchDevice {
@@ -237,7 +231,7 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	_, err = s.store.UpdateLastSeenForDevice(userDevice)
+	_, err = s.store.UpdateLastSeenForDevice(ctx, userDevice)
 	if err != nil {
 		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
@@ -252,14 +246,14 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	_, err = s.store.RemoveDeviceWithLegacy(userDevice.UserDbId, targetLegacyDeviceId)
+	_, err = s.store.RemoveDeviceWithLegacy(ctx, userDevice.UserDbId, targetLegacyDeviceId)
 	if err != nil {
 		log.Printf("Failed to delete device %d for device %s: %s", targetLegacyDeviceId, userDevice.DeviceId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
 		return
 	}
 
-	devices, err := s.store.GetDevices(userDevice.UserId)
+	devices, err := s.store.GetDevices(ctx, userDevice.UserId)
 	if err != nil {
 		log.Printf("Failed to fetch devices for user %s: %s", userDevice.UserId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
@@ -302,6 +296,9 @@ func matchesEtag(requestEtag string, etagValue string) bool {
 }
 
 func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
 	if !s.ensureBasicAuthOrError(w, r) {
 		return
 	}
@@ -332,7 +329,7 @@ func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
+	userDevice, err := s.store.GetLegacyDevice(ctx, syncCode, legacyDeviceId)
 	if err != nil {
 		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
 		if err == store.ErrNoSuchDevice {
@@ -344,7 +341,7 @@ func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.store.UpdateLastSeenForDevice(userDevice)
+	_, err = s.store.UpdateLastSeenForDevice(ctx, userDevice)
 	if err != nil {
 		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
@@ -360,7 +357,10 @@ func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) handleGetFeedsV1(userDevice store.UserDevice, w http.ResponseWriter, r *http.Request) {
-	feedsEtag, err := s.store.GetLegacyFeedsEtag(userDevice.UserId)
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	feedsEtag, err := s.store.GetLegacyFeedsEtag(ctx, userDevice.UserId)
 	if err != nil {
 		if err == store.ErrNoFeeds {
 			w.WriteHeader(http.StatusNoContent)
@@ -378,7 +378,7 @@ func (s *FeederServer) handleGetFeedsV1(userDevice store.UserDevice, w http.Resp
 		return
 	}
 
-	feeds, err := s.store.GetLegacyFeeds(userDevice.UserId)
+	feeds, err := s.store.GetLegacyFeeds(ctx, userDevice.UserId)
 	if err != nil {
 		if err == store.ErrNoFeeds {
 			w.WriteHeader(http.StatusNoContent)
@@ -407,8 +407,11 @@ func (s *FeederServer) handleGetFeedsV1(userDevice store.UserDevice, w http.Resp
 }
 
 func (s *FeederServer) handlePostFeedsV1(userDevice store.UserDevice, w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
 	var currentEtag string
-	feeds, err := s.store.GetLegacyFeeds(userDevice.UserId)
+	feeds, err := s.store.GetLegacyFeeds(ctx, userDevice.UserId)
 	if err != nil {
 		if err == store.ErrNoFeeds {
 			currentEtag = ""
@@ -442,6 +445,7 @@ func (s *FeederServer) handlePostFeedsV1(userDevice store.UserDevice, w http.Res
 	}
 
 	_, err = s.store.UpdateLegacyFeeds(
+		ctx,
 		userDevice.UserDbId,
 		feedsRequest.ContentHash,
 		feedsRequest.Encrypted,
@@ -471,6 +475,9 @@ func etagValueForInt64(data int64) string {
 }
 
 func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
 	if !s.ensureBasicAuthOrError(w, r) {
 		return
 	}
@@ -495,7 +502,7 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
+	userDevice, err := s.store.GetLegacyDevice(ctx, syncCode, legacyDeviceId)
 	if err != nil {
 		if err == store.ErrNoSuchDevice {
 			// Used by clients
@@ -507,7 +514,7 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_, err = s.store.UpdateLastSeenForDevice(userDevice)
+	_, err = s.store.UpdateLastSeenForDevice(ctx, userDevice)
 	if err != nil {
 		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
@@ -532,7 +539,7 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 
-		articles, err := s.store.GetArticles(userDevice.UserId, since)
+		articles, err := s.store.GetArticles(ctx, userDevice.UserId, since)
 
 		if err != nil {
 			log.Printf("Could not fetch articles: %s", err.Error())
@@ -573,7 +580,7 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 		}
 
 		for _, readmark := range sendRequest.ReadMarks {
-			if err := s.store.AddLegacyArticle(userDevice.UserDbId, readmark.Encrypted); err != nil {
+			if err := s.store.AddLegacyArticle(ctx, userDevice.UserDbId, readmark.Encrypted); err != nil {
 				log.Printf("Failed to add article: %v", err.Error())
 				http.Error(w, "Failed to store article", http.StatusInternalServerError)
 				return
@@ -589,6 +596,9 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *FeederServer) handleMigrateV2(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
 	// Migration is only accepted from the old sync server
 	cfWorker := r.Header["Cf-Worker"]
 	if cfWorker == nil || len(cfWorker) == 0 || cfWorker[0] != "nononsenseapps.com" {
@@ -608,7 +618,7 @@ func (s *FeederServer) handleMigrateV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := s.store.EnsureMigration(migrateRequest.SyncCode, migrateRequest.DeviceId, migrateRequest.DeviceName)
+	_, err := s.store.EnsureMigration(ctx, migrateRequest.SyncCode, migrateRequest.DeviceId, migrateRequest.DeviceName)
 	if err != nil {
 		http.Error(w, "Badness", http.StatusInternalServerError)
 		return
@@ -633,6 +643,9 @@ func (s *FeederServer) ensureBasicAuthOrError(w http.ResponseWriter, r *http.Req
 }
 
 func (s *FeederServer) handleCreateV1(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
 	if !s.ensureBasicAuthOrError(w, r) {
 		return
 	}
@@ -649,7 +662,7 @@ func (s *FeederServer) handleCreateV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userDevice, err := s.store.RegisterNewUser(createChainRequest.DeviceName)
+	userDevice, err := s.store.RegisterNewUser(ctx, createChainRequest.DeviceName)
 	if err != nil {
 		http.Error(w, "Badness", http.StatusInternalServerError)
 		return
@@ -668,6 +681,9 @@ func (s *FeederServer) handleCreateV1(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) handleCreateV2(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
 	if !s.ensureBasicAuthOrError(w, r) {
 		return
 	}
@@ -684,7 +700,7 @@ func (s *FeederServer) handleCreateV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userDevice, err := s.store.RegisterNewUser(createChainRequest.DeviceName)
+	userDevice, err := s.store.RegisterNewUser(ctx, createChainRequest.DeviceName)
 	if err != nil {
 		http.Error(w, "Badness", http.StatusInternalServerError)
 		return
@@ -698,6 +714,9 @@ func (s *FeederServer) handleCreateV2(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) handleJoinV1(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
 	if !s.ensureBasicAuthOrError(w, r) {
 		return
 	}
@@ -719,7 +738,7 @@ func (s *FeederServer) handleJoinV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userDevice, err := s.store.AddDeviceToChainWithLegacy(syncCode, joinChainRequest.DeviceName)
+	userDevice, err := s.store.AddDeviceToChainWithLegacy(ctx, syncCode, joinChainRequest.DeviceName)
 	if err != nil {
 		switch err.Error() {
 		case "user not found":
@@ -743,6 +762,9 @@ func (s *FeederServer) handleJoinV1(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) handleJoinV2(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
 	if !s.ensureBasicAuthOrError(w, r) {
 		return
 	}
@@ -759,7 +781,7 @@ func (s *FeederServer) handleJoinV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userDevice, err := s.store.AddDeviceToChain(joinChainRequest.UserId, joinChainRequest.DeviceName)
+	userDevice, err := s.store.AddDeviceToChain(ctx, joinChainRequest.UserId, joinChainRequest.DeviceName)
 	if err != nil {
 		switch err.Error() {
 		case "No such user":

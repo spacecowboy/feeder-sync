@@ -1,204 +1,53 @@
 package server
 
 import (
+	"context"
 	"errors"
-	"path/filepath"
 
 	"github.com/spacecowboy/feeder-sync/internal/store"
-	"github.com/spacecowboy/feeder-sync/internal/store/sqlite"
 
 	"github.com/google/uuid"
 )
 
-type InMemoryStore struct {
-	calls       map[string]int
-	userDevices map[string][]store.UserDevice
-	articles    map[uuid.UUID][]store.Article
-}
-
-func (s InMemoryStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
-	userId := uuid.New()
-	devices := make([]store.UserDevice, 2)
-
-	device := store.UserDevice{
-		UserId:         userId,
-		DeviceId:       uuid.New(),
-		DeviceName:     deviceName,
-		LegacySyncCode: userId.String(),
-		LegacyDeviceId: 5, //rand.Int63(),
-	}
-
-	devices = append(devices, device)
-	s.userDevices[userId.String()] = devices
-
-	return device, nil
-}
-
-func (s InMemoryStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (store.UserDevice, error) {
-	devices := s.userDevices[userId.String()]
-
-	if devices == nil {
-		return store.UserDevice{}, errors.New("No such user")
-	}
-
-	device := store.UserDevice{
-		UserId:     userId,
-		DeviceId:   uuid.New(),
-		DeviceName: deviceName,
-	}
-
-	devices = append(devices, device)
-	s.userDevices[userId.String()] = devices
-
-	return device, nil
-}
-
-func (s InMemoryStore) AddDeviceToChainWithLegacy(syncCode string, deviceName string) (store.UserDevice, error) {
-	devices := s.userDevices[syncCode]
-
-	if devices == nil {
-		return store.UserDevice{}, errors.New("No such user")
-	}
-
-	device := store.UserDevice{
-		UserId:     devices[0].UserId,
-		DeviceId:   uuid.New(),
-		DeviceName: deviceName,
-	}
-
-	devices = append(devices, device)
-	s.userDevices[syncCode] = devices
-
-	return device, nil
-}
-
-func (s InMemoryStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
-	articles := s.articles[userId]
-
-	if articles == nil {
-		// return []store.Article{}, errors.New("No such user")
-		return []store.Article{}, nil
-	}
-
-	return articles, nil
-}
-
-func (s InMemoryStore) AddLegacyArticle(userDbId int64, identifier string) error {
-	return errors.New("BOOM")
-}
-
-func (s InMemoryStore) GetLegacyDevice(syncCode string, deviceId int64) (store.UserDevice, error) {
-	return store.UserDevice{}, errors.New("BOOM")
-}
-
-func (s InMemoryStore) Close() error {
-	return nil
-}
-
-func (s InMemoryStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error) {
-	s.calls["EnsureMigration"] = 1 + s.calls["EnsureMigration"]
-	return 0, nil
-}
-
-func (s InMemoryStore) UpdateLastSeenForDevice(device store.UserDevice) (int64, error) {
-	return 0, errors.New("BOOM")
-}
-
-func (s InMemoryStore) RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId int64) (int64, error) {
-	return 0, errors.New("BOOM")
-}
-
-func (s InMemoryStore) GetDevices(userId uuid.UUID) ([]store.UserDevice, error) {
-	return nil, errors.New("BOOM")
-}
-
-func (s InMemoryStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, error) {
-	return store.LegacyFeeds{}, errors.New("BOOM")
-}
-
-func (s InMemoryStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag string) (int64, error) {
-	return 0, errors.New("BOOM")
-}
-
-func (s InMemoryStore) TransferUsersToStore(toStore store.DataStore) error {
-	return errors.New("BOOM")
-}
-
-func (s InMemoryStore) AcceptUser(user *store.User) error {
-	return errors.New("BOOM")
-}
-
-func (s InMemoryStore) TransferDevicesToStore(toStore store.DataStore) error {
-	return errors.New("BOOM")
-}
-
-func (s InMemoryStore) AcceptDevice(device *store.UserDevice) error {
-	return errors.New("BOOM")
-}
-
-func (s InMemoryStore) TransferArticlesToStore(toStore store.DataStore) error {
-	return errors.New("BOOM")
-}
-
-func (s InMemoryStore) AcceptArticle(article *store.Article) error {
-	return errors.New("BOOM")
-}
-
-func (s InMemoryStore) TransferLegacyFeedsToStore(toStore store.DataStore) error {
-	return errors.New("BOOM")
-}
-
-func (s InMemoryStore) AcceptLegacyFeeds(feeds *store.LegacyFeeds) error {
-	return errors.New("BOOM")
-}
-
-func (s InMemoryStore) GetLegacyFeedsEtag(userId uuid.UUID) (string, error) {
-	return "", errors.New("BOOM")
-}
-
-func (s InMemoryStore) GetLegacyDevicesEtag(syncCode string) (string, error) {
-	return "", errors.New("BOOM")
-}
-
 type ExplodingStore struct{}
 
-func (s ExplodingStore) GetLegacyFeedsEtag(userId uuid.UUID) (string, error) {
+func (s ExplodingStore) GetLegacyFeedsEtag(ctx context.Context, userId uuid.UUID) (string, error) {
 	return "", errors.New("BOOM")
 }
 
-func (s ExplodingStore) GetLegacyDevicesEtag(syncCode string) (string, error) {
+func (s ExplodingStore) GetLegacyDevicesEtag(ctx context.Context, syncCode string) (string, error) {
 	return "", errors.New("BOOM")
 }
 
-func (s ExplodingStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
+func (s ExplodingStore) RegisterNewUser(ctx context.Context, deviceName string) (store.UserDevice, error) {
 	return store.UserDevice{}, errors.New("BOOM")
 }
 
-func (s ExplodingStore) AddDeviceToChain(userId uuid.UUID, deviceName string) (store.UserDevice, error) {
+func (s ExplodingStore) AddDeviceToChain(ctx context.Context, userId uuid.UUID, deviceName string) (store.UserDevice, error) {
 	return store.UserDevice{}, errors.New("BOOM")
 }
 
-func (s ExplodingStore) AddDeviceToChainWithLegacy(syncCode string, deviceName string) (store.UserDevice, error) {
+func (s ExplodingStore) AddDeviceToChainWithLegacy(ctx context.Context, syncCode string, deviceName string) (store.UserDevice, error) {
 	return store.UserDevice{}, errors.New("BOOM")
 }
 
-func (s ExplodingStore) EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error) {
+func (s ExplodingStore) EnsureMigration(ctx context.Context, syncCode string, deviceId int64, deviceName string) (int64, error) {
 	return 0, errors.New("BOOM")
 }
 
-func (s ExplodingStore) GetArticles(userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
+func (s ExplodingStore) GetArticles(ctx context.Context, userId uuid.UUID, sinceMillis int64) ([]store.Article, error) {
 	return nil, errors.New("BOOM")
 }
 
-func (s ExplodingStore) AddLegacyArticle(userDbId int64, identifier string) error {
+func (s ExplodingStore) AddLegacyArticle(ctx context.Context, userDbId int64, identifier string) error {
 	return errors.New("BOOM")
 }
 
-func (s ExplodingStore) GetLegacyDevice(syncCode string, deviceId int64) (store.UserDevice, error) {
+func (s ExplodingStore) GetLegacyDevice(ctx context.Context, syncCode string, deviceId int64) (store.UserDevice, error) {
 	return store.UserDevice{}, errors.New("BOOM")
 }
 
-func (s ExplodingStore) UpdateLastSeenForDevice(device store.UserDevice) (int64, error) {
+func (s ExplodingStore) UpdateLastSeenForDevice(ctx context.Context, device store.UserDevice) (int64, error) {
 	return 0, errors.New("BOOM")
 }
 
@@ -206,63 +55,50 @@ func (s ExplodingStore) Close() error {
 	return errors.New("BOOM")
 }
 
-func (s ExplodingStore) RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId int64) (int64, error) {
+func (s ExplodingStore) RemoveDeviceWithLegacy(ctx context.Context, userDbId int64, legacyDeviceId int64) (int64, error) {
 	return 0, errors.New("BOOM")
 }
 
-func (s ExplodingStore) GetDevices(userId uuid.UUID) ([]store.UserDevice, error) {
+func (s ExplodingStore) GetDevices(ctx context.Context, userId uuid.UUID) ([]store.UserDevice, error) {
 	return nil, errors.New("BOOM")
 }
 
-func (s ExplodingStore) GetLegacyFeeds(userId uuid.UUID) (store.LegacyFeeds, error) {
+func (s ExplodingStore) GetLegacyFeeds(ctx context.Context, userId uuid.UUID) (store.LegacyFeeds, error) {
 	return store.LegacyFeeds{}, errors.New("BOOM")
 }
 
-func (s ExplodingStore) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag string) (int64, error) {
+func (s ExplodingStore) UpdateLegacyFeeds(ctx context.Context, userDbId int64, contentHash int64, content string, etag string) (int64, error) {
 	return 0, errors.New("BOOM")
 }
 
-func (s ExplodingStore) TransferUsersToStore(toStore store.DataStore) error {
+func (s ExplodingStore) TransferUsersToStore(ctx context.Context, toStore store.DataStore) error {
 	return errors.New("BOOM")
 }
 
-func (s ExplodingStore) AcceptUser(user *store.User) error {
+func (s ExplodingStore) AcceptUser(ctx context.Context, user *store.User) error {
 	return errors.New("BOOM")
 }
 
-func (s ExplodingStore) TransferDevicesToStore(toStore store.DataStore) error {
+func (s ExplodingStore) TransferDevicesToStore(ctx context.Context, toStore store.DataStore) error {
 	return errors.New("BOOM")
 }
 
-func (s ExplodingStore) AcceptDevice(device *store.UserDevice) error {
+func (s ExplodingStore) AcceptDevice(ctx context.Context, device *store.UserDevice) error {
 	return errors.New("BOOM")
 }
 
-func (s ExplodingStore) TransferArticlesToStore(toStore store.DataStore) error {
+func (s ExplodingStore) TransferArticlesToStore(ctx context.Context, toStore store.DataStore) error {
 	return errors.New("BOOM")
 }
 
-func (s ExplodingStore) AcceptArticle(article *store.Article) error {
+func (s ExplodingStore) AcceptArticle(ctx context.Context, article *store.Article) error {
 	return errors.New("BOOM")
 }
 
-func (s ExplodingStore) TransferLegacyFeedsToStore(toStore store.DataStore) error {
+func (s ExplodingStore) TransferLegacyFeedsToStore(ctx context.Context, toStore store.DataStore) error {
 	return errors.New("BOOM")
 }
 
-func (s ExplodingStore) AcceptLegacyFeeds(feeds *store.LegacyFeeds) error {
+func (s ExplodingStore) AcceptLegacyFeeds(ctx context.Context, feeds *store.LegacyFeeds) error {
 	return errors.New("BOOM")
-}
-
-func NewSqliteServer(tempdir string) (*FeederServer, error) {
-	store, err := sqlite.New(filepath.Join(tempdir, "sqlite.db"))
-	if err != nil {
-		return nil, err
-	}
-
-	if err := store.RunMigrations("file://../../migrations_sqlite"); err != nil {
-		return nil, err
-	}
-
-	return NewServerWithStore(&store)
 }

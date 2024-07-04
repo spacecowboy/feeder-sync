@@ -119,7 +119,7 @@ func TestPostgresIntegration(t *testing.T) {
 		db := NewStore(t, ctx, container)
 		defer db.Close()
 
-		userDevice, err := db.RegisterNewUser("devicename")
+		userDevice, err := db.RegisterNewUser(ctx, "devicename")
 
 		if err != nil {
 			t.Fatalf("error: %s", err.Error())
@@ -145,7 +145,7 @@ func TestPostgresIntegration(t *testing.T) {
 			t.Errorf("bad LegacyDeviceId id: %d", userDevice.LegacyDeviceId)
 		}
 
-		devices, err := db.GetDevices(userDevice.UserId)
+		devices, err := db.GetDevices(ctx, userDevice.UserId)
 
 		if err != nil {
 			t.Fatalf("failed: %s", err.Error())
@@ -182,7 +182,7 @@ func TestPostgresIntegration(t *testing.T) {
 		db := NewStore(t, ctx, container)
 		defer db.Close()
 
-		_, err = db.AddDeviceToChainWithLegacy("foo bar", "bla bla")
+		_, err = db.AddDeviceToChainWithLegacy(ctx, "foo bar", "bla bla")
 		if err == nil {
 			t.Fatalf("Expected a failure")
 		}
@@ -196,12 +196,12 @@ func TestPostgresIntegration(t *testing.T) {
 		db := NewStore(t, ctx, container)
 		defer db.Close()
 
-		userDevice, err := db.RegisterNewUser("firstDevice")
+		userDevice, err := db.RegisterNewUser(ctx, "firstDevice")
 		if err != nil {
 			t.Fatalf("Failed: %s", err.Error())
 		}
 
-		device, err := db.AddDeviceToChainWithLegacy(userDevice.LegacySyncCode, "secondDevice")
+		device, err := db.AddDeviceToChainWithLegacy(ctx, userDevice.LegacySyncCode, "secondDevice")
 		if err != nil {
 			t.Fatalf("failed: %s", err.Error())
 		}
@@ -215,7 +215,7 @@ func TestPostgresIntegration(t *testing.T) {
 		db := NewStore(t, ctx, container)
 		defer db.Close()
 
-		_, err = db.AddDeviceToChain(uuid.New(), "bla bla")
+		_, err = db.AddDeviceToChain(ctx, uuid.New(), "bla bla")
 		if err == nil {
 			t.Fatalf("Expected a failure")
 		}
@@ -229,12 +229,12 @@ func TestPostgresIntegration(t *testing.T) {
 		db := NewStore(t, ctx, container)
 		defer db.Close()
 
-		userDevice, err := db.RegisterNewUser("firstDevice")
+		userDevice, err := db.RegisterNewUser(ctx, "firstDevice")
 		if err != nil {
 			t.Fatalf("Failed: %s", err.Error())
 		}
 
-		device, err := db.AddDeviceToChain(userDevice.UserId, "otherDevice")
+		device, err := db.AddDeviceToChain(ctx, userDevice.UserId, "otherDevice")
 		if err != nil {
 			t.Fatalf("failed: %s", err.Error())
 		}
@@ -248,7 +248,7 @@ func TestPostgresIntegration(t *testing.T) {
 		db := NewStore(t, ctx, container)
 		defer db.Close()
 
-		_, err = db.EnsureMigration("tooshort", 1, "foo")
+		_, err = db.EnsureMigration(ctx, "tooshort", 1, "foo")
 
 		if err == nil {
 			t.Error("Expected an error")
@@ -260,12 +260,12 @@ func TestPostgresIntegration(t *testing.T) {
 		defer db.Close()
 
 		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-		_, err = db.EnsureMigration(legacySyncCode, 1, "devicename")
+		_, err = db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 
-		_, err := db.GetLegacyDevice(legacySyncCode, 1)
+		_, err := db.GetLegacyDevice(ctx, legacySyncCode, 1)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -274,7 +274,7 @@ func TestPostgresIntegration(t *testing.T) {
 
 		legacySyncCode = "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 		wantRows = 2
-		got, err := db.EnsureMigration(legacySyncCode, 66, "devicename")
+		got, err := db.EnsureMigration(ctx, legacySyncCode, 66, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -284,7 +284,7 @@ func TestPostgresIntegration(t *testing.T) {
 
 		// Add another device
 		wantRows = 1
-		got, err = db.EnsureMigration(legacySyncCode, 67, "devicename")
+		got, err = db.EnsureMigration(ctx, legacySyncCode, 67, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -294,7 +294,7 @@ func TestPostgresIntegration(t *testing.T) {
 
 		// Same device again
 		wantRows = 0
-		got, err = db.EnsureMigration(legacySyncCode, 67, "devicename")
+		got, err = db.EnsureMigration(ctx, legacySyncCode, 67, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -359,17 +359,17 @@ func TestPostgresIntegration(t *testing.T) {
 		defer db.Close()
 
 		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-		_, err = db.EnsureMigration(legacySyncCode, 1, "devicename")
+		_, err = db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 
-		userDevice, err := db.GetLegacyDevice(legacySyncCode, 1)
+		userDevice, err := db.GetLegacyDevice(ctx, legacySyncCode, 1)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 
-		articles, err := db.GetArticles(userDevice.UserId, 0)
+		articles, err := db.GetArticles(ctx, userDevice.UserId, 0)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -378,12 +378,12 @@ func TestPostgresIntegration(t *testing.T) {
 			t.Fatalf("Expected no articles yet: %d", len(articles))
 		}
 
-		if err = db.AddLegacyArticle(userDevice.UserDbId, "first"); err != nil {
+		if err = db.AddLegacyArticle(ctx, userDevice.UserDbId, "first"); err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 
 		// Now should get one
-		articles, err = db.GetArticles(userDevice.UserId, 0)
+		articles, err = db.GetArticles(ctx, userDevice.UserId, 0)
 		if err != nil {
 			t.Fatalf("Got an error:%s", err.Error())
 		}
@@ -393,7 +393,7 @@ func TestPostgresIntegration(t *testing.T) {
 		}
 
 		article := articles[0]
-		articles, err = db.GetArticles(userDevice.UserId, article.UpdatedAt)
+		articles, err = db.GetArticles(ctx, userDevice.UserId, article.UpdatedAt)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -408,23 +408,23 @@ func TestPostgresIntegration(t *testing.T) {
 		defer db.Close()
 
 		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-		_, err = db.EnsureMigration(legacySyncCode, 1, "devicename")
+		_, err = db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 
-		userDevice, err := db.GetLegacyDevice(legacySyncCode, 1)
+		userDevice, err := db.GetLegacyDevice(ctx, legacySyncCode, 1)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 
-		etag1, err := db.GetLegacyDevicesEtag(legacySyncCode)
+		etag1, err := db.GetLegacyDevicesEtag(ctx, legacySyncCode)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 		assert.NotEqual(t, "", etag1, "Etag should not be empty")
 
-		res, err := db.UpdateLastSeenForDevice(userDevice)
+		res, err := db.UpdateLastSeenForDevice(ctx, userDevice)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -433,7 +433,7 @@ func TestPostgresIntegration(t *testing.T) {
 			t.Fatalf("Expected 1, got %d", res)
 		}
 
-		updatedDevice, err := db.GetLegacyDevice(legacySyncCode, 1)
+		updatedDevice, err := db.GetLegacyDevice(ctx, legacySyncCode, 1)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -442,7 +442,7 @@ func TestPostgresIntegration(t *testing.T) {
 			t.Fatalf("New value %d is not greater than old value %d", updatedDevice.LastSeen, userDevice.LastSeen)
 		}
 
-		etag2, err := db.GetLegacyDevicesEtag(legacySyncCode)
+		etag2, err := db.GetLegacyDevicesEtag(ctx, legacySyncCode)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -455,11 +455,11 @@ func TestPostgresIntegration(t *testing.T) {
 		defer db.Close()
 
 		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-		_, err = db.EnsureMigration(legacySyncCode, 1, "devicename")
+		_, err = db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
-		_, err = db.GetLegacyDevice(legacySyncCode, 9999)
+		_, err = db.GetLegacyDevice(ctx, legacySyncCode, 9999)
 		if err == nil {
 			t.Fatalf("Expected error")
 		}
@@ -475,7 +475,7 @@ func TestPostgresIntegration(t *testing.T) {
 
 		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 
-		etag, err := db.GetLegacyDevicesEtag(legacySyncCode)
+		etag, err := db.GetLegacyDevicesEtag(ctx, legacySyncCode)
 		assert.Equal(t, "", etag)
 		assert.Equal(t, store.ErrNoSuchDevice, err)
 	})
@@ -485,18 +485,18 @@ func TestPostgresIntegration(t *testing.T) {
 		defer db.Close()
 
 		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-		_, err = db.EnsureMigration(legacySyncCode, 1, "devicename")
+		_, err = db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 
-		userDevice, err := db.GetLegacyDevice(legacySyncCode, 1)
+		userDevice, err := db.GetLegacyDevice(ctx, legacySyncCode, 1)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 
 		// Initial get is empty
-		feeds, err := db.GetLegacyFeeds(userDevice.UserId)
+		feeds, err := db.GetLegacyFeeds(ctx, userDevice.UserId)
 		if err == nil {
 			t.Fatalf("Expected error on first query not %q", feeds)
 		} else {
@@ -507,6 +507,7 @@ func TestPostgresIntegration(t *testing.T) {
 
 		// Add some feeds
 		count, err := db.UpdateLegacyFeeds(
+			ctx,
 			userDevice.UserDbId,
 			1,
 			"content",
@@ -520,7 +521,7 @@ func TestPostgresIntegration(t *testing.T) {
 			t.Fatalf("Count is not 1: %d", count)
 		}
 
-		etag, err := db.GetLegacyFeedsEtag(userDevice.UserId)
+		etag, err := db.GetLegacyFeedsEtag(ctx, userDevice.UserId)
 		if err != nil {
 			t.Fatalf("Error: %s", err.Error())
 		}
@@ -528,6 +529,7 @@ func TestPostgresIntegration(t *testing.T) {
 
 		// New update comes in
 		count, err = db.UpdateLegacyFeeds(
+			ctx,
 			userDevice.UserDbId,
 			2,
 			"content2",
@@ -542,7 +544,7 @@ func TestPostgresIntegration(t *testing.T) {
 		}
 
 		// Now get the value
-		feeds, err = db.GetLegacyFeeds(userDevice.UserId)
+		feeds, err = db.GetLegacyFeeds(ctx, userDevice.UserId)
 		if err != nil {
 			t.Fatalf("Error: %s", err.Error())
 		}

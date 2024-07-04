@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 
 	"github.com/google/uuid"
@@ -8,31 +9,33 @@ import (
 
 type DataStore interface {
 	Close() error
-	RegisterNewUser(deviceName string) (UserDevice, error)
-	AddDeviceToChain(userId uuid.UUID, deviceName string) (UserDevice, error)
-	AddDeviceToChainWithLegacy(syncCode string, deviceName string) (UserDevice, error)
-	GetDevices(userId uuid.UUID) ([]UserDevice, error)
-	GetLegacyDevice(syncCode string, deviceId int64) (UserDevice, error)
-	GetLegacyDevicesEtag(syncCode string) (string, error)
-	RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId int64) (int64, error)
-	UpdateLastSeenForDevice(device UserDevice) (int64, error)
-	GetArticles(userId uuid.UUID, sinceMillis int64) ([]Article, error)
-	AddLegacyArticle(userDbId int64, identifier string) error
-	GetLegacyFeeds(userId uuid.UUID) (LegacyFeeds, error)
-	GetLegacyFeedsEtag(userId uuid.UUID) (string, error)
-	UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag string) (int64, error)
+	RegisterNewUser(ctx context.Context, deviceName string) (UserDevice, error)
+	AddDeviceToChain(ctx context.Context, userId uuid.UUID, deviceName string) (UserDevice, error)
+	AddDeviceToChainWithLegacy(ctx context.Context, syncCode string, deviceName string) (UserDevice, error)
+	GetDevices(ctx context.Context, userId uuid.UUID) ([]UserDevice, error)
+	GetLegacyDevice(ctx context.Context, syncCode string, deviceId int64) (UserDevice, error)
+	GetLegacyDevicesEtag(ctx context.Context, syncCode string) (string, error)
+	RemoveDeviceWithLegacy(ctx context.Context, userDbId int64, legacyDeviceId int64) (int64, error)
+	UpdateLastSeenForDevice(ctx context.Context, device UserDevice) (int64, error)
+	GetArticles(ctx context.Context, userId uuid.UUID, sinceMillis int64) ([]Article, error)
+	AddLegacyArticle(ctx context.Context, userDbId int64, identifier string) error
+	GetLegacyFeeds(ctx context.Context, userId uuid.UUID) (LegacyFeeds, error)
+	GetLegacyFeedsEtag(ctx context.Context, userId uuid.UUID) (string, error)
+	UpdateLegacyFeeds(ctx context.Context, userDbId int64, contentHash int64, content string, etag string) (int64, error)
 	// Inserts a new user and device with the given legacy values if not already exists.
 	// NOOP if already exists.
-	EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error)
-	// Admin functions
-	TransferUsersToStore(toStore DataStore) error
-	AcceptUser(user *User) error
-	TransferDevicesToStore(toStore DataStore) error
-	AcceptDevice(device *UserDevice) error
-	TransferArticlesToStore(toStore DataStore) error
-	AcceptArticle(article *Article) error
-	TransferLegacyFeedsToStore(toStore DataStore) error
-	AcceptLegacyFeeds(feeds *LegacyFeeds) error
+	EnsureMigration(ctx context.Context, syncCode string, deviceId int64, deviceName string) (int64, error)
+}
+
+type TransferStore interface {
+	TransferUsersToStore(ctx context.Context, toStore TransferStore) error
+	AcceptUser(ctx context.Context, user *User) error
+	TransferDevicesToStore(ctx context.Context, toStore TransferStore) error
+	AcceptDevice(ctx context.Context, device *UserDevice) error
+	TransferArticlesToStore(ctx context.Context, toStore TransferStore) error
+	AcceptArticle(ctx context.Context, article *Article) error
+	TransferLegacyFeedsToStore(ctx context.Context, toStore TransferStore) error
+	AcceptLegacyFeeds(ctx context.Context, feeds *LegacyFeeds) error
 }
 
 type User struct {

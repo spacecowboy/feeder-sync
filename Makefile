@@ -12,7 +12,7 @@ out:
 
 .PHONY: test
 test:
-	go test -v -race -buildvcs ./...
+	go test -tags=testing -v -race -buildvcs ./...
 
 .PHONY: deploy
 deploy: build
