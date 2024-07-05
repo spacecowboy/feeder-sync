@@ -17,7 +17,7 @@ import (
 )
 
 type FeederServer struct {
-	store   store.DataStore
+	Store   store.DataStore
 	handler http.Handler
 }
 
@@ -36,7 +36,7 @@ func NewServerWithPostgres(conn string) (*FeederServer, error) {
 
 func NewServerWithStore(dataStore store.DataStore) (*FeederServer, error) {
 	server := FeederServer{
-		store: dataStore,
+		Store: dataStore,
 	}
 
 	router := http.NewServeMux()
@@ -71,7 +71,7 @@ func NewServerWithStore(dataStore store.DataStore) (*FeederServer, error) {
 }
 
 func (s *FeederServer) Close() error {
-	return s.store.Close()
+	return s.Store.Close()
 }
 
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +111,7 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	etag, err := s.store.GetLegacyDevicesEtag(ctx, syncCode)
+	etag, err := s.Store.GetLegacyDevicesEtag(ctx, syncCode)
 	if err != nil {
 		if err == store.ErrNoSuchDevice {
 			http.Error(w, DEVICE_NOT_REGISTERED, http.StatusBadRequest)
@@ -128,7 +128,7 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	userDevice, err := s.store.GetLegacyDevice(ctx, syncCode, legacyDeviceId)
+	userDevice, err := s.Store.GetLegacyDevice(ctx, syncCode, legacyDeviceId)
 	if err != nil {
 		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
 		if err == store.ErrNoSuchDevice {
@@ -140,14 +140,14 @@ func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	_, err = s.store.UpdateLastSeenForDevice(ctx, userDevice)
+	_, err = s.Store.UpdateLastSeenForDevice(ctx, userDevice)
 	if err != nil {
 		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
 		return
 	}
 
-	devices, err := s.store.GetDevices(ctx, userDevice.UserId)
+	devices, err := s.Store.GetDevices(ctx, userDevice.UserId)
 	if err != nil {
 		log.Printf("Failed to fetch devices for user %s: %s", userDevice.UserId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
@@ -219,7 +219,7 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	userDevice, err := s.store.GetLegacyDevice(ctx, syncCode, legacyDeviceId)
+	userDevice, err := s.Store.GetLegacyDevice(ctx, syncCode, legacyDeviceId)
 	if err != nil {
 		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
 		if err == store.ErrNoSuchDevice {
@@ -231,7 +231,7 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	_, err = s.store.UpdateLastSeenForDevice(ctx, userDevice)
+	_, err = s.Store.UpdateLastSeenForDevice(ctx, userDevice)
 	if err != nil {
 		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
@@ -246,14 +246,14 @@ func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	_, err = s.store.RemoveDeviceWithLegacy(ctx, userDevice.UserDbId, targetLegacyDeviceId)
+	_, err = s.Store.RemoveDeviceWithLegacy(ctx, userDevice.UserDbId, targetLegacyDeviceId)
 	if err != nil {
 		log.Printf("Failed to delete device %d for device %s: %s", targetLegacyDeviceId, userDevice.DeviceId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
 		return
 	}
 
-	devices, err := s.store.GetDevices(ctx, userDevice.UserId)
+	devices, err := s.Store.GetDevices(ctx, userDevice.UserId)
 	if err != nil {
 		log.Printf("Failed to fetch devices for user %s: %s", userDevice.UserId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
@@ -329,7 +329,7 @@ func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userDevice, err := s.store.GetLegacyDevice(ctx, syncCode, legacyDeviceId)
+	userDevice, err := s.Store.GetLegacyDevice(ctx, syncCode, legacyDeviceId)
 	if err != nil {
 		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
 		if err == store.ErrNoSuchDevice {
@@ -341,7 +341,7 @@ func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = s.store.UpdateLastSeenForDevice(ctx, userDevice)
+	_, err = s.Store.UpdateLastSeenForDevice(ctx, userDevice)
 	if err != nil {
 		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
@@ -360,7 +360,7 @@ func (s *FeederServer) handleGetFeedsV1(userDevice store.UserDevice, w http.Resp
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 	defer cancel()
 
-	feedsEtag, err := s.store.GetLegacyFeedsEtag(ctx, userDevice.UserId)
+	feedsEtag, err := s.Store.GetLegacyFeedsEtag(ctx, userDevice.UserId)
 	if err != nil {
 		if err == store.ErrNoFeeds {
 			w.WriteHeader(http.StatusNoContent)
@@ -378,7 +378,7 @@ func (s *FeederServer) handleGetFeedsV1(userDevice store.UserDevice, w http.Resp
 		return
 	}
 
-	feeds, err := s.store.GetLegacyFeeds(ctx, userDevice.UserId)
+	feeds, err := s.Store.GetLegacyFeeds(ctx, userDevice.UserId)
 	if err != nil {
 		if err == store.ErrNoFeeds {
 			w.WriteHeader(http.StatusNoContent)
@@ -411,7 +411,7 @@ func (s *FeederServer) handlePostFeedsV1(userDevice store.UserDevice, w http.Res
 	defer cancel()
 
 	var currentEtag string
-	feeds, err := s.store.GetLegacyFeeds(ctx, userDevice.UserId)
+	feeds, err := s.Store.GetLegacyFeeds(ctx, userDevice.UserId)
 	if err != nil {
 		if err == store.ErrNoFeeds {
 			currentEtag = ""
@@ -444,7 +444,7 @@ func (s *FeederServer) handlePostFeedsV1(userDevice store.UserDevice, w http.Res
 		return
 	}
 
-	_, err = s.store.UpdateLegacyFeeds(
+	_, err = s.Store.UpdateLegacyFeeds(
 		ctx,
 		userDevice.UserDbId,
 		feedsRequest.ContentHash,
@@ -502,7 +502,7 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	userDevice, err := s.store.GetLegacyDevice(ctx, syncCode, legacyDeviceId)
+	userDevice, err := s.Store.GetLegacyDevice(ctx, syncCode, legacyDeviceId)
 	if err != nil {
 		if err == store.ErrNoSuchDevice {
 			// Used by clients
@@ -514,7 +514,7 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_, err = s.store.UpdateLastSeenForDevice(ctx, userDevice)
+	_, err = s.Store.UpdateLastSeenForDevice(ctx, userDevice)
 	if err != nil {
 		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
 		http.Error(w, "Something bad happened", http.StatusInternalServerError)
@@ -539,7 +539,7 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 
-		articles, err := s.store.GetArticles(ctx, userDevice.UserId, since)
+		articles, err := s.Store.GetArticles(ctx, userDevice.UserId, since)
 
 		if err != nil {
 			log.Printf("Could not fetch articles: %s", err.Error())
@@ -580,7 +580,7 @@ func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) 
 		}
 
 		for _, readmark := range sendRequest.ReadMarks {
-			if err := s.store.AddLegacyArticle(ctx, userDevice.UserDbId, readmark.Encrypted); err != nil {
+			if err := s.Store.AddLegacyArticle(ctx, userDevice.UserDbId, readmark.Encrypted); err != nil {
 				log.Printf("Failed to add article: %v", err.Error())
 				http.Error(w, "Failed to store article", http.StatusInternalServerError)
 				return
@@ -618,7 +618,7 @@ func (s *FeederServer) handleMigrateV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := s.store.EnsureMigration(ctx, migrateRequest.SyncCode, migrateRequest.DeviceId, migrateRequest.DeviceName)
+	_, err := s.Store.EnsureMigration(ctx, migrateRequest.SyncCode, migrateRequest.DeviceId, migrateRequest.DeviceName)
 	if err != nil {
 		http.Error(w, "Badness", http.StatusInternalServerError)
 		return
@@ -662,7 +662,7 @@ func (s *FeederServer) handleCreateV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userDevice, err := s.store.RegisterNewUser(ctx, createChainRequest.DeviceName)
+	userDevice, err := s.Store.RegisterNewUser(ctx, createChainRequest.DeviceName)
 	if err != nil {
 		http.Error(w, "Badness", http.StatusInternalServerError)
 		return
@@ -700,7 +700,7 @@ func (s *FeederServer) handleCreateV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userDevice, err := s.store.RegisterNewUser(ctx, createChainRequest.DeviceName)
+	userDevice, err := s.Store.RegisterNewUser(ctx, createChainRequest.DeviceName)
 	if err != nil {
 		http.Error(w, "Badness", http.StatusInternalServerError)
 		return
@@ -738,7 +738,7 @@ func (s *FeederServer) handleJoinV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userDevice, err := s.store.AddDeviceToChainWithLegacy(ctx, syncCode, joinChainRequest.DeviceName)
+	userDevice, err := s.Store.AddDeviceToChainWithLegacy(ctx, syncCode, joinChainRequest.DeviceName)
 	if err != nil {
 		switch err.Error() {
 		case "user not found":
@@ -781,7 +781,7 @@ func (s *FeederServer) handleJoinV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userDevice, err := s.store.AddDeviceToChain(ctx, joinChainRequest.UserId, joinChainRequest.DeviceName)
+	userDevice, err := s.Store.AddDeviceToChain(ctx, joinChainRequest.UserId, joinChainRequest.DeviceName)
 	if err != nil {
 		switch err.Error() {
 		case "No such user":

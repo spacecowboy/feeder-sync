@@ -1,20 +1,18 @@
-package postgres
+package test
 
 import (
 	"context"
+	"database/sql"
 	"testing"
-	"time"
 
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	"github.com/peterldowns/pgtestdb"
-	"github.com/peterldowns/pgtestdb/migrators/golangmigrator"
 	"github.com/spacecowboy/feeder-sync/internal/store"
+	postgresqlStore "github.com/spacecowboy/feeder-sync/internal/store/postgres"
 	"github.com/stretchr/testify/assert"
-	"github.com/testcontainers/testcontainers-go"
+	"github.com/stretchr/testify/suite"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 const (
@@ -23,100 +21,39 @@ const (
 	dbname   = "feedertest"
 )
 
-// NewDB is a helper that returns an open connection to a unique and isolated
-// test database, fully migrated and ready for you to query.
-func NewContainer(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, error) {
-	t.Helper()
-
-	container, err := postgres.RunContainer(
-		ctx,
-		testcontainers.WithImage("postgres:15"),
-		postgres.WithDatabase(dbname),
-		postgres.WithUsername(user),
-		postgres.WithPassword(password),
-		WithTmpfs(),
-		// postgres.WithInitScripts(
-		// 	"../../../migrations_postgres/1_create_tables.up.sql",
-		// 	"../../../migrations_postgres/2_create_articles.up.sql",
-		// 	"../../../migrations_postgres/3_add_updated_at.up.sql",
-		// 	"../../../migrations_postgres/4_create_legacy_feeds.up.sql",
-		// 	"../../../migrations_postgres/5_add_updated_at_index.up.sql",
-		// ),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(5*time.Second),
-		),
-	)
-
-	if err != nil {
-		t.Fatalf("Failed to start postgres container: %s", err.Error())
-	}
-
-	// Clean up the container after the test is complete
-	t.Cleanup(func() {
-		if err := container.Terminate(ctx); err != nil {
-			t.Fatalf("failed to terminate container: %s", err)
-		}
-	})
-
-	return container, nil
+type PostgresContainerTestSuite struct {
+	suite.Suite
+	pgContainer *postgres.PostgresContainer
+	ctx         context.Context
+	snapshotDb  *sql.DB
 }
 
-func WithTmpfs() testcontainers.CustomizeRequestOption {
-	return func(req *testcontainers.GenericContainerRequest) {
-		req.Tmpfs = map[string]string{"/var/lib/postgresql/data": "rw"}
-		req.Env["PGDATA"] = "/var/lib/postgresql/data"
-		req.Cmd = []string{
-			"postgres",
-			"-c",
-			// turn off fsync for speed
-			"fsync=off",
-			"-c",
-			// log everything for debugging
-			"log_statement=all",
-		}
+func (suite *PostgresContainerTestSuite) SetupSuite() {
+	suite.ctx = context.Background()
+	suite.pgContainer = NewContainer(suite.T(), suite.ctx)
+	suite.snapshotDb = NewDb(suite.T(), suite.ctx, suite.pgContainer)
+}
+
+func (suite *PostgresContainerTestSuite) TearDownSuite() {
+	suite.snapshotDb.Close()
+	if err := suite.pgContainer.Terminate(suite.ctx); err != nil {
+		suite.T().Fatal(err)
 	}
 }
 
-func NewStore(t *testing.T, ctx context.Context, container *postgres.PostgresContainer) PostgresStore {
-	t.Helper()
-
-	host, err := container.Host(ctx)
-	if err != nil {
-		t.Fatalf("Failed to get host: %s", err.Error())
-	}
-
-	port, err := container.MappedPort(ctx, "5432/tcp")
-	if err != nil {
-		t.Fatalf("Failed to get port: %s", err.Error())
-	}
-
-	conf := pgtestdb.Config{
-		DriverName: "postgres",
-		User:       user,
-		Password:   password,
-		Database:   dbname,
-		Host:       host,
-		Port:       port.Port(),
-		Options:    "sslmode=disable",
-	}
-
-	migrator := golangmigrator.New("../../../migrations_postgres")
-	return PostgresStore{
-		Db: pgtestdb.New(t, conf, migrator),
-	}
-}
-
-func TestPostgresIntegration(t *testing.T) {
+func TestPostgresStore(t *testing.T) {
 	ctx := context.Background()
-	container, err := NewContainer(t, ctx)
-	if err != nil {
-		t.Fatalf("Failed to start postgres container: %s", err.Error())
-	}
+	container := NewContainer(t, ctx)
 
-	t.Parallel()
+	snapShotDp := NewDb(t, ctx, container)
+	defer snapShotDp.Close()
+
+	t.Log(snapShotDp.Stats())
 
 	t.Run("Register new user works", func(t *testing.T) {
-		db := NewStore(t, ctx, container)
+		db := postgresqlStore.PostgresStore{
+			Db: NewDb(t, ctx, container),
+		}
 		defer db.Close()
 
 		userDevice, err := db.RegisterNewUser(ctx, "devicename")
@@ -179,10 +116,12 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChainWithLegacy no such user fails", func(t *testing.T) {
-		db := NewStore(t, ctx, container)
+		db := postgresqlStore.PostgresStore{
+			Db: NewDb(t, ctx, container),
+		}
 		defer db.Close()
 
-		_, err = db.AddDeviceToChainWithLegacy(ctx, "foo bar", "bla bla")
+		_, err := db.AddDeviceToChainWithLegacy(ctx, "foo bar", "bla bla")
 		if err == nil {
 			t.Fatalf("Expected a failure")
 		}
@@ -193,7 +132,9 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChainWithLegacy succeeds", func(t *testing.T) {
-		db := NewStore(t, ctx, container)
+		db := postgresqlStore.PostgresStore{
+			Db: NewDb(t, ctx, container),
+		}
 		defer db.Close()
 
 		userDevice, err := db.RegisterNewUser(ctx, "firstDevice")
@@ -212,10 +153,12 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChain no such user fails", func(t *testing.T) {
-		db := NewStore(t, ctx, container)
+		db := postgresqlStore.PostgresStore{
+			Db: NewDb(t, ctx, container),
+		}
 		defer db.Close()
 
-		_, err = db.AddDeviceToChain(ctx, uuid.New(), "bla bla")
+		_, err := db.AddDeviceToChain(ctx, uuid.New(), "bla bla")
 		if err == nil {
 			t.Fatalf("Expected a failure")
 		}
@@ -226,7 +169,9 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 
 	t.Run("AddDeviceToChain succeeds", func(t *testing.T) {
-		db := NewStore(t, ctx, container)
+		db := postgresqlStore.PostgresStore{
+			Db: NewDb(t, ctx, container),
+		}
 		defer db.Close()
 
 		userDevice, err := db.RegisterNewUser(ctx, "firstDevice")
@@ -245,10 +190,12 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 
 	t.Run("Migration invalid synccode returns error", func(t *testing.T) {
-		db := NewStore(t, ctx, container)
+		db := postgresqlStore.PostgresStore{
+			Db: NewDb(t, ctx, container),
+		}
 		defer db.Close()
 
-		_, err = db.EnsureMigration(ctx, "tooshort", 1, "foo")
+		_, err := db.EnsureMigration(ctx, "tooshort", 1, "foo")
 
 		if err == nil {
 			t.Error("Expected an error")
@@ -256,16 +203,18 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 
 	t.Run("Ensure migration works", func(t *testing.T) {
-		db := NewStore(t, ctx, container)
+		db := postgresqlStore.PostgresStore{
+			Db: NewDb(t, ctx, container),
+		}
 		defer db.Close()
 
 		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-		_, err = db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
+		_, err := db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
 
-		_, err := db.GetLegacyDevice(ctx, legacySyncCode, 1)
+		_, err = db.GetLegacyDevice(ctx, legacySyncCode, 1)
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -305,14 +254,14 @@ func TestPostgresIntegration(t *testing.T) {
 		// Ensure data is correct
 		rows, err := db.Db.Query(
 			`select
-			  device_id,
-				legacy_device_id,
-				device_name,
-				last_seen,
-				user_db_id
-			from devices
-			  where legacy_device_id = $1 or legacy_device_id = $2
-			`,
+					device_id,
+					legacy_device_id,
+					device_name,
+					last_seen,
+					user_db_id
+				from devices
+					where legacy_device_id = $1 or legacy_device_id = $2
+				`,
 			66,
 			67,
 		)
@@ -355,11 +304,13 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 
 	t.Run("Write and get legacy articles", func(t *testing.T) {
-		db := NewStore(t, ctx, container)
+		db := postgresqlStore.PostgresStore{
+			Db: NewDb(t, ctx, container),
+		}
 		defer db.Close()
 
 		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-		_, err = db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
+		_, err := db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -404,11 +355,13 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 
 	t.Run("Update device last seen", func(t *testing.T) {
-		db := NewStore(t, ctx, container)
+		db := postgresqlStore.PostgresStore{
+			Db: NewDb(t, ctx, container),
+		}
 		defer db.Close()
 
 		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-		_, err = db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
+		_, err := db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -451,11 +404,13 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 
 	t.Run("GetLegacyDevice fails no such device", func(t *testing.T) {
-		db := NewStore(t, ctx, container)
+		db := postgresqlStore.PostgresStore{
+			Db: NewDb(t, ctx, container),
+		}
 		defer db.Close()
 
 		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-		_, err = db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
+		_, err := db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
@@ -470,7 +425,9 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 
 	t.Run("GetLegacyDevicesEtag fails no such device", func(t *testing.T) {
-		db := NewStore(t, ctx, container)
+		db := postgresqlStore.PostgresStore{
+			Db: NewDb(t, ctx, container),
+		}
 		defer db.Close()
 
 		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
@@ -481,11 +438,13 @@ func TestPostgresIntegration(t *testing.T) {
 	})
 
 	t.Run("Feeds", func(t *testing.T) {
-		db := NewStore(t, ctx, container)
+		db := postgresqlStore.PostgresStore{
+			Db: NewDb(t, ctx, container),
+		}
 		defer db.Close()
 
 		legacySyncCode := "fa18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
-		_, err = db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
+		_, err := db.EnsureMigration(ctx, legacySyncCode, 1, "devicename")
 		if err != nil {
 			t.Fatalf("Got an error: %s", err.Error())
 		}
