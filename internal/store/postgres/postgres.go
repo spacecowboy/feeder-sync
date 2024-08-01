@@ -517,12 +517,25 @@ func (s *PostgresStore) TransferUsersToStore(toStore store.DataStore) error {
 
 	var user store.User
 
+	// print a u for every 100 users
+	var user_count int = -1
+	var printed bool = false
+
 	for rows.Next() {
 		if err := rows.Scan(&user.UserDbId, &user.UserId, &user.LegacySyncCode); err != nil {
 			return err
 		}
 
 		toStore.AcceptUser(&user)
+
+		user_count++
+		if user_count%100 == 0 {
+			printed = true
+			fmt.Printf("u")
+		}
+	}
+	if printed {
+		fmt.Printf("\n")
 	}
 	if err = rows.Err(); err != nil {
 		return err
@@ -561,12 +574,25 @@ func (s *PostgresStore) TransferDevicesToStore(toStore store.DataStore) error {
 
 	var userDevice store.UserDevice
 
+	// print a d for every 100 users
+	var item_count int = -1
+	var printed bool = false
+
 	for rows.Next() {
 		if err := rows.Scan(&userDevice.UserDbId, &userDevice.DeviceId, &userDevice.DeviceName, &userDevice.LegacyDeviceId, &userDevice.LastSeen); err != nil {
 			return err
 		}
 
 		toStore.AcceptDevice(&userDevice)
+
+		item_count++
+		if item_count%100 == 0 {
+			printed = true
+			fmt.Printf("d")
+		}
+	}
+	if printed {
+		fmt.Printf("\n")
 	}
 	if err = rows.Err(); err != nil {
 		return err
@@ -606,12 +632,25 @@ func (s *PostgresStore) TransferArticlesToStore(toStore store.DataStore) error {
 
 	var article store.Article
 
+	// print a a for every 100 users
+	var item_count int = -1
+	var printed bool = false
+
 	for rows.Next() {
 		if err := rows.Scan(&article.ReadTime, &article.Identifier, &article.UpdatedAt, &article.UserDbId); err != nil {
 			return err
 		}
 
 		toStore.AcceptArticle(&article)
+
+		item_count++
+		if item_count%100 == 0 {
+			printed = true
+			fmt.Printf("a")
+		}
+	}
+	if printed {
+		fmt.Printf("\n")
 	}
 	if err = rows.Err(); err != nil {
 		return err
@@ -650,12 +689,25 @@ func (s *PostgresStore) TransferLegacyFeedsToStore(toStore store.DataStore) erro
 
 	var feeds store.LegacyFeeds
 
+	// print a f for every 100 users
+	var item_count int = -1
+	var printed bool = false
+
 	for rows.Next() {
 		if err := rows.Scan(&feeds.ContentHash, &feeds.Content, &feeds.Etag, &feeds.UserDbId); err != nil {
 			return err
 		}
 
 		toStore.AcceptLegacyFeeds(&feeds)
+
+		item_count++
+		if item_count%100 == 0 {
+			printed = true
+			fmt.Printf("f")
+		}
+	}
+	if printed {
+		fmt.Printf("\n")
 	}
 
 	if err = rows.Err(); err != nil {

@@ -45,7 +45,7 @@ func main() {
 		log.Fatalf("Postgres migration failed: %q", err)
 	}
 
-	log.Println("Transferring data from sqlite to postgres")
+	log.Println("Transferring data from old to new")
 	if err := store_transfer.MoveBetweenStores(&psql_old, &psql); err != nil {
 		log.Fatalf("Failed to transfer data: %q", err)
 	}
