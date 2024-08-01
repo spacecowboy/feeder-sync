@@ -13,9 +13,9 @@ func MoveBetweenStores(from_store store.DataStore, toStore store.DataStore) erro
 		return err
 	}
 
-	if err := from_store.TransferArticlesToStore(toStore); err != nil {
-		return err
-	}
+	// if err := from_store.TransferArticlesToStore(toStore); err != nil {
+	// 	return err
+	// }
 
 	if err := from_store.TransferLegacyFeedsToStore(toStore); err != nil {
 		return err
