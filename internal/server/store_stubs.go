@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 
@@ -14,6 +15,13 @@ type InMemoryStore struct {
 	calls       map[string]int
 	userDevices map[string][]store.UserDevice
 	articles    map[uuid.UUID][]store.Article
+}
+
+// verify interface implementation
+var _ store.DataStore = InMemoryStore{}
+
+func (s InMemoryStore) PingContext(ctx context.Context) error {
+	return nil
 }
 
 func (s InMemoryStore) RegisterNewUser(deviceName string) (store.UserDevice, error) {
@@ -161,6 +169,13 @@ func (s InMemoryStore) GetLegacyDevicesEtag(syncCode string) (string, error) {
 }
 
 type ExplodingStore struct{}
+
+// verify interface implementation
+var _ store.DataStore = ExplodingStore{}
+
+func (s ExplodingStore) PingContext(ctx context.Context) error {
+	return nil
+}
 
 func (s ExplodingStore) GetLegacyFeedsEtag(userId uuid.UUID) (string, error) {
 	return "", errors.New("BOOM")

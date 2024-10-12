@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/spacecowboy/feeder-sync/internal/store"
-	"golang.org/x/exp/slices"
 )
 
 func TestJoinSyncChainV1(t *testing.T) {
@@ -968,16 +967,23 @@ func TestReadMarkV1(t *testing.T) {
 			t.Errorf("Wrong number of read marks in response: %d", actual)
 		}
 
-		if !slices.ContainsFunc[ReadMarkV1](readMarks.ReadMarks, func(readMark ReadMarkV1) bool {
-			return readMark.Encrypted == "foo"
-		}) {
-			t.Error("foo not in result")
+		// Check that foo and bar are in the response
+		foundFoo := false
+		foundBar := false
+		for _, rm := range readMarks.ReadMarks {
+			if rm.Encrypted == "foo" {
+				foundFoo = true
+			}
+			if rm.Encrypted == "bar" {
+				foundBar = true
+			}
 		}
 
-		if !slices.ContainsFunc[ReadMarkV1](readMarks.ReadMarks, func(readMark ReadMarkV1) bool {
-			return readMark.Encrypted == "bar"
-		}) {
-			t.Error("bar not in result")
+		if !foundFoo {
+			t.Error("Did not find foo in response")
+		}
+		if !foundBar {
+			t.Error("Did not find bar in response")
 		}
 
 		// Also check that lastSeen has been updated

@@ -62,7 +62,7 @@ func NewContainer(t *testing.T, ctx context.Context) (*postgres.PostgresContaine
 }
 
 func WithTmpfs() testcontainers.CustomizeRequestOption {
-	return func(req *testcontainers.GenericContainerRequest) {
+	return func(req *testcontainers.GenericContainerRequest) error {
 		req.Tmpfs = map[string]string{"/var/lib/postgresql/data": "rw"}
 		req.Env["PGDATA"] = "/var/lib/postgresql/data"
 		req.Cmd = []string{
@@ -74,6 +74,7 @@ func WithTmpfs() testcontainers.CustomizeRequestOption {
 			// log everything for debugging
 			"log_statement=all",
 		}
+		return nil
 	}
 }
 
