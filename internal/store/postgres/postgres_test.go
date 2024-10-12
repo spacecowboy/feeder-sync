@@ -125,6 +125,12 @@ func TestPostgresIntegration(t *testing.T) {
 			t.Fatalf("error: %s", err.Error())
 		}
 
+		// Second user should not fail even with same device name
+		_, err = db.RegisterNewUser("devicename")
+		if err != nil {
+			t.Fatalf("error: %s", err.Error())
+		}
+
 		if userDevice.DeviceName != "devicename" {
 			t.Errorf("wrong device name: %s", userDevice.DeviceName)
 		}
