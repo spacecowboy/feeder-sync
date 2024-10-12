@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/felixge/httpsnoop"
 	"github.com/spacecowboy/feeder-sync/internal/store"
@@ -53,6 +55,9 @@ func NewServerWithStore(dataStore store.DataStore) (*FeederServer, error) {
 
 	router := http.NewServeMux()
 
+	router.Handle("/health", http.HandlerFunc(server.handleHealth))
+	router.Handle("/ready", http.HandlerFunc(server.handleReady))
+
 	router.Handle("/api/v2/migrate", http.HandlerFunc(server.handleMigrateV2))
 	router.Handle("/api/v1/create", http.HandlerFunc(server.handleCreateV1))
 	router.Handle("/api/v2/create", http.HandlerFunc(server.handleCreateV2))
@@ -88,6 +93,31 @@ func (s *FeederServer) Close() error {
 
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.handler.ServeHTTP(w, r)
+}
+
+func (s *FeederServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if s.handler != nil && s.store != nil {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Server is not initialized"))
+	}
+}
+
+func (s *FeederServer) handleReady(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	// Check if the database connection is alive
+	if err := s.store.PingContext(ctx); err != nil {
+		log.Printf("Database connection is not ready: %s", err.Error())
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("Database connection is not ready"))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Ready"))
 }
 
 func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request) {

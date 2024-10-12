@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	crand "crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -23,6 +24,9 @@ type PostgresStore struct {
 	Db *sql.DB
 }
 
+// verify interface implementation
+var _ store.DataStore = &PostgresStore{}
+
 func New(conn string) (PostgresStore, error) {
 	db, err := sql.Open("postgres", conn)
 	if err != nil {
@@ -32,6 +36,10 @@ func New(conn string) (PostgresStore, error) {
 	return PostgresStore{
 		Db: db,
 	}, nil
+}
+
+func (s *PostgresStore) PingContext(ctx context.Context) error {
+	return s.Db.PingContext(ctx)
 }
 
 func (s *PostgresStore) Close() error {

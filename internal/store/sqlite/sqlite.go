@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	crand "crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -23,6 +24,9 @@ type SqliteStore struct {
 	db *sql.DB
 }
 
+// verify interface implementation
+var _ store.DataStore = &SqliteStore{}
+
 func New(dbPath string) (SqliteStore, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -38,6 +42,10 @@ func New(dbPath string) (SqliteStore, error) {
 
 func (s *SqliteStore) Close() error {
 	return s.db.Close()
+}
+
+func (s *SqliteStore) PingContext(ctx context.Context) error {
+	return s.db.PingContext(ctx)
 }
 
 func (s *SqliteStore) RunMigrations(path string) error {

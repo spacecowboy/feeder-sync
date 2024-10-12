@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 
 	"github.com/google/uuid"
@@ -33,6 +34,8 @@ type DataStore interface {
 	AcceptArticle(article *Article) error
 	TransferLegacyFeedsToStore(toStore DataStore) error
 	AcceptLegacyFeeds(feeds *LegacyFeeds) error
+	// For health check
+	PingContext(ctx context.Context) error
 }
 
 type User struct {
