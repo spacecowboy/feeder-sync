@@ -65,7 +65,7 @@ func (s *PostgresStore) RunMigrations(path string) error {
 }
 
 // TODO move to common, same for sqlite
-func randomLegacySyncCode() (string, error) {
+func RandomLegacySyncCode() (string, error) {
 	bytes := make([]byte, 30)
 	if _, err := crand.Read(bytes); err != nil {
 		return "", err

@@ -11,49 +11,27 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const insertArticle = `-- name: InsertArticle :exec
-INSERT INTO articles (user_db_id, identifier, read_time, updated_at)
-VALUES ($1, $2, $3, $4)
-`
-
-type InsertArticleParams struct {
-	UserDbID   int64
-	Identifier string
-	ReadTime   pgtype.Timestamptz
-	UpdatedAt  pgtype.Timestamptz
-}
-
-func (q *Queries) InsertArticle(ctx context.Context, arg InsertArticleParams) error {
-	_, err := q.db.Exec(ctx, insertArticle,
-		arg.UserDbID,
-		arg.Identifier,
-		arg.ReadTime,
-		arg.UpdatedAt,
-	)
-	return err
-}
-
-const selectAllArticles = `-- name: SelectAllArticles :many
+const getAllArticles = `-- name: GetAllArticles :many
 SELECT read_time, identifier, updated_at, user_db_id
 FROM articles
 `
 
-type SelectAllArticlesRow struct {
+type GetAllArticlesRow struct {
 	ReadTime   pgtype.Timestamptz
 	Identifier string
 	UpdatedAt  pgtype.Timestamptz
 	UserDbID   int64
 }
 
-func (q *Queries) SelectAllArticles(ctx context.Context) ([]SelectAllArticlesRow, error) {
-	rows, err := q.db.Query(ctx, selectAllArticles)
+func (q *Queries) GetAllArticles(ctx context.Context) ([]GetAllArticlesRow, error) {
+	rows, err := q.db.Query(ctx, getAllArticles)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SelectAllArticlesRow
+	var items []GetAllArticlesRow
 	for rows.Next() {
-		var i SelectAllArticlesRow
+		var i GetAllArticlesRow
 		if err := rows.Scan(
 			&i.ReadTime,
 			&i.Identifier,
@@ -70,7 +48,7 @@ func (q *Queries) SelectAllArticles(ctx context.Context) ([]SelectAllArticlesRow
 	return items, nil
 }
 
-const selectArticles = `-- name: SelectArticles :many
+const getArticles = `-- name: GetArticles :many
 SELECT user_id, read_time, identifier, updated_at
 FROM articles
 INNER JOIN users ON articles.user_db_id = users.db_id
@@ -79,27 +57,27 @@ ORDER BY read_time DESC
 LIMIT 1000
 `
 
-type SelectArticlesParams struct {
+type GetArticlesParams struct {
 	UserID    string
 	UpdatedAt pgtype.Timestamptz
 }
 
-type SelectArticlesRow struct {
+type GetArticlesRow struct {
 	UserID     string
 	ReadTime   pgtype.Timestamptz
 	Identifier string
 	UpdatedAt  pgtype.Timestamptz
 }
 
-func (q *Queries) SelectArticles(ctx context.Context, arg SelectArticlesParams) ([]SelectArticlesRow, error) {
-	rows, err := q.db.Query(ctx, selectArticles, arg.UserID, arg.UpdatedAt)
+func (q *Queries) GetArticles(ctx context.Context, arg GetArticlesParams) ([]GetArticlesRow, error) {
+	rows, err := q.db.Query(ctx, getArticles, arg.UserID, arg.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SelectArticlesRow
+	var items []GetArticlesRow
 	for rows.Next() {
-		var i SelectArticlesRow
+		var i GetArticlesRow
 		if err := rows.Scan(
 			&i.UserID,
 			&i.ReadTime,
@@ -114,4 +92,29 @@ func (q *Queries) SelectArticles(ctx context.Context, arg SelectArticlesParams) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const insertArticle = `-- name: InsertArticle :one
+INSERT INTO articles (user_db_id, identifier, read_time, updated_at)
+VALUES ($1, $2, $3, $4)
+RETURNING db_id
+`
+
+type InsertArticleParams struct {
+	UserDbID   int64
+	Identifier string
+	ReadTime   pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+func (q *Queries) InsertArticle(ctx context.Context, arg InsertArticleParams) (int64, error) {
+	row := q.db.QueryRow(ctx, insertArticle,
+		arg.UserDbID,
+		arg.Identifier,
+		arg.ReadTime,
+		arg.UpdatedAt,
+	)
+	var db_id int64
+	err := row.Scan(&db_id)
+	return db_id, err
 }

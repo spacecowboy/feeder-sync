@@ -9,50 +9,25 @@ import (
 	"context"
 )
 
-const getUserDbId = `-- name: GetUserDbId :one
-SELECT db_id FROM users WHERE user_id = $1 LIMIT 1
-`
-
-func (q *Queries) GetUserDbId(ctx context.Context, userID string) (int64, error) {
-	row := q.db.QueryRow(ctx, getUserDbId, userID)
-	var db_id int64
-	err := row.Scan(&db_id)
-	return db_id, err
-}
-
-const insertUser = `-- name: InsertUser :exec
-INSERT INTO users (user_id, legacy_sync_code) VALUES ($1, $2) RETURNING db_id
-`
-
-type InsertUserParams struct {
-	UserID         string
-	LegacySyncCode string
-}
-
-func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
-	_, err := q.db.Exec(ctx, insertUser, arg.UserID, arg.LegacySyncCode)
-	return err
-}
-
-const selectAllUsers = `-- name: SelectAllUsers :many
+const getAllUsers = `-- name: GetAllUsers :many
 SELECT db_id, user_id
 FROM users
 `
 
-type SelectAllUsersRow struct {
+type GetAllUsersRow struct {
 	DbID   int64
 	UserID string
 }
 
-func (q *Queries) SelectAllUsers(ctx context.Context) ([]SelectAllUsersRow, error) {
-	rows, err := q.db.Query(ctx, selectAllUsers)
+func (q *Queries) GetAllUsers(ctx context.Context) ([]GetAllUsersRow, error) {
+	rows, err := q.db.Query(ctx, getAllUsers)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SelectAllUsersRow
+	var items []GetAllUsersRow
 	for rows.Next() {
-		var i SelectAllUsersRow
+		var i GetAllUsersRow
 		if err := rows.Scan(&i.DbID, &i.UserID); err != nil {
 			return nil, err
 		}
@@ -64,24 +39,64 @@ func (q *Queries) SelectAllUsers(ctx context.Context) ([]SelectAllUsersRow, erro
 	return items, nil
 }
 
-const selectUserDbId = `-- name: SelectUserDbId :one
+const getUserBySyncCode = `-- name: GetUserBySyncCode :one
+SELECT db_id, user_id, legacy_sync_code FROM users WHERE legacy_sync_code = $1 LIMIT 1
+`
+
+func (q *Queries) GetUserBySyncCode(ctx context.Context, legacySyncCode string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserBySyncCode, legacySyncCode)
+	var i User
+	err := row.Scan(&i.DbID, &i.UserID, &i.LegacySyncCode)
+	return i, err
+}
+
+const getUserByUserId = `-- name: GetUserByUserId :one
+SELECT db_id, user_id, legacy_sync_code FROM users WHERE user_id = $1 LIMIT 1
+`
+
+func (q *Queries) GetUserByUserId(ctx context.Context, userID string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByUserId, userID)
+	var i User
+	err := row.Scan(&i.DbID, &i.UserID, &i.LegacySyncCode)
+	return i, err
+}
+
+const getUserDbId = `-- name: GetUserDbId :one
 SELECT db_id FROM users WHERE user_id = $1 LIMIT 1
 `
 
-func (q *Queries) SelectUserDbId(ctx context.Context, userID string) (int64, error) {
-	row := q.db.QueryRow(ctx, selectUserDbId, userID)
+func (q *Queries) GetUserDbId(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRow(ctx, getUserDbId, userID)
 	var db_id int64
 	err := row.Scan(&db_id)
 	return db_id, err
 }
 
-const selectUserDbIdBySyncCode = `-- name: SelectUserDbIdBySyncCode :one
+const getUserDbIdBySyncCode = `-- name: GetUserDbIdBySyncCode :one
 SELECT db_id FROM users WHERE legacy_sync_code = $1 LIMIT 1
 `
 
-func (q *Queries) SelectUserDbIdBySyncCode(ctx context.Context, legacySyncCode string) (int64, error) {
-	row := q.db.QueryRow(ctx, selectUserDbIdBySyncCode, legacySyncCode)
+func (q *Queries) GetUserDbIdBySyncCode(ctx context.Context, legacySyncCode string) (int64, error) {
+	row := q.db.QueryRow(ctx, getUserDbIdBySyncCode, legacySyncCode)
 	var db_id int64
 	err := row.Scan(&db_id)
 	return db_id, err
+}
+
+const insertUser = `-- name: InsertUser :one
+INSERT INTO users (user_id, legacy_sync_code) 
+VALUES ($1, $2)
+RETURNING db_id, user_id, legacy_sync_code
+`
+
+type InsertUserParams struct {
+	UserID         string
+	LegacySyncCode string
+}
+
+func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, insertUser, arg.UserID, arg.LegacySyncCode)
+	var i User
+	err := row.Scan(&i.DbID, &i.UserID, &i.LegacySyncCode)
+	return i, err
 }

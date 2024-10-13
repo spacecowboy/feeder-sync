@@ -9,27 +9,27 @@ import (
 	"context"
 )
 
-const selectAllLegacyFeeds = `-- name: SelectAllLegacyFeeds :many
+const getAllLegacyFeeds = `-- name: GetAllLegacyFeeds :many
 SELECT content_hash, content, etag, user_db_id
 FROM legacy_feeds
 `
 
-type SelectAllLegacyFeedsRow struct {
+type GetAllLegacyFeedsRow struct {
 	ContentHash int64
 	Content     string
 	Etag        string
 	UserDbID    int64
 }
 
-func (q *Queries) SelectAllLegacyFeeds(ctx context.Context) ([]SelectAllLegacyFeedsRow, error) {
-	rows, err := q.db.Query(ctx, selectAllLegacyFeeds)
+func (q *Queries) GetAllLegacyFeeds(ctx context.Context) ([]GetAllLegacyFeedsRow, error) {
+	rows, err := q.db.Query(ctx, getAllLegacyFeeds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SelectAllLegacyFeedsRow
+	var items []GetAllLegacyFeedsRow
 	for rows.Next() {
-		var i SelectAllLegacyFeedsRow
+		var i GetAllLegacyFeedsRow
 		if err := rows.Scan(
 			&i.ContentHash,
 			&i.Content,
@@ -46,52 +46,57 @@ func (q *Queries) SelectAllLegacyFeeds(ctx context.Context) ([]SelectAllLegacyFe
 	return items, nil
 }
 
-const selectLegacyFeeds = `-- name: SelectLegacyFeeds :many
+const getLegacyFeeds = `-- name: GetLegacyFeeds :one
 SELECT user_id, content_hash, content, etag
 FROM legacy_feeds
 INNER JOIN users ON legacy_feeds.user_db_id = users.db_id
 WHERE user_id = $1
+LIMIT 1
 `
 
-type SelectLegacyFeedsRow struct {
+type GetLegacyFeedsRow struct {
 	UserID      string
 	ContentHash int64
 	Content     string
 	Etag        string
 }
 
-func (q *Queries) SelectLegacyFeeds(ctx context.Context, userID string) ([]SelectLegacyFeedsRow, error) {
-	rows, err := q.db.Query(ctx, selectLegacyFeeds, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []SelectLegacyFeedsRow
-	for rows.Next() {
-		var i SelectLegacyFeedsRow
-		if err := rows.Scan(
-			&i.UserID,
-			&i.ContentHash,
-			&i.Content,
-			&i.Etag,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GetLegacyFeeds(ctx context.Context, userID string) (GetLegacyFeedsRow, error) {
+	row := q.db.QueryRow(ctx, getLegacyFeeds, userID)
+	var i GetLegacyFeedsRow
+	err := row.Scan(
+		&i.UserID,
+		&i.ContentHash,
+		&i.Content,
+		&i.Etag,
+	)
+	return i, err
 }
 
-const updateLegacyFeeds = `-- name: UpdateLegacyFeeds :exec
+const getLegacyFeedsEtag = `-- name: GetLegacyFeedsEtag :one
+select
+    etag
+from legacy_feeds
+inner join users on legacy_feeds.user_db_id = users.db_id
+where user_id = $1
+limit 1
+`
+
+func (q *Queries) GetLegacyFeedsEtag(ctx context.Context, userID string) (string, error) {
+	row := q.db.QueryRow(ctx, getLegacyFeedsEtag, userID)
+	var etag string
+	err := row.Scan(&etag)
+	return etag, err
+}
+
+const updateLegacyFeeds = `-- name: UpdateLegacyFeeds :one
 INSERT INTO legacy_feeds (user_db_id, content_hash, content, etag)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (user_db_id) DO UPDATE
 SET content_hash = excluded.content_hash,
     content = excluded.content,
     etag = excluded.etag
+RETURNING db_id
 `
 
 type UpdateLegacyFeedsParams struct {
@@ -101,12 +106,14 @@ type UpdateLegacyFeedsParams struct {
 	Etag        string
 }
 
-func (q *Queries) UpdateLegacyFeeds(ctx context.Context, arg UpdateLegacyFeedsParams) error {
-	_, err := q.db.Exec(ctx, updateLegacyFeeds,
+func (q *Queries) UpdateLegacyFeeds(ctx context.Context, arg UpdateLegacyFeedsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, updateLegacyFeeds,
 		arg.UserDbID,
 		arg.ContentHash,
 		arg.Content,
 		arg.Etag,
 	)
-	return err
+	var db_id int64
+	err := row.Scan(&db_id)
+	return db_id, err
 }

@@ -1,12 +1,13 @@
--- name: InsertArticle :exec
+-- name: InsertArticle :one
 INSERT INTO articles (user_db_id, identifier, read_time, updated_at)
-VALUES ($1, $2, $3, $4);
+VALUES ($1, $2, $3, $4)
+RETURNING db_id;
 
--- name: SelectAllArticles :many
+-- name: GetAllArticles :many
 SELECT read_time, identifier, updated_at, user_db_id
 FROM articles;
 
--- name: SelectArticles :many
+-- name: GetArticles :many
 SELECT user_id, read_time, identifier, updated_at
 FROM articles
 INNER JOIN users ON articles.user_db_id = users.db_id

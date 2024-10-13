@@ -26,55 +26,41 @@ func (q *Queries) DeleteDevice(ctx context.Context, arg DeleteDeviceParams) erro
 	return err
 }
 
-const insertDevice = `-- name: InsertDevice :one
-INSERT INTO devices (device_id, device_name, last_seen, user_db_id)
-VALUES ($1, $2, $3, $4) RETURNING db_id
+const deleteDeviceWithLegacyId = `-- name: DeleteDeviceWithLegacyId :exec
+delete from devices
+where user_db_id = $1 and legacy_device_id = $2
 `
 
-type InsertDeviceParams struct {
-	DeviceID   string
-	DeviceName string
-	LastSeen   pgtype.Timestamptz
-	UserDbID   int64
+type DeleteDeviceWithLegacyIdParams struct {
+	UserDbID       int64
+	LegacyDeviceID int64
 }
 
-func (q *Queries) InsertDevice(ctx context.Context, arg InsertDeviceParams) (int64, error) {
-	row := q.db.QueryRow(ctx, insertDevice,
-		arg.DeviceID,
-		arg.DeviceName,
-		arg.LastSeen,
-		arg.UserDbID,
-	)
-	var db_id int64
-	err := row.Scan(&db_id)
-	return db_id, err
+func (q *Queries) DeleteDeviceWithLegacyId(ctx context.Context, arg DeleteDeviceWithLegacyIdParams) error {
+	_, err := q.db.Exec(ctx, deleteDeviceWithLegacyId, arg.UserDbID, arg.LegacyDeviceID)
+	return err
 }
 
-const selectAllDevices = `-- name: SelectAllDevices :many
-SELECT user_db_id, device_id, device_name, last_seen FROM devices
+const getAllDevices = `-- name: GetAllDevices :many
+SELECT db_id, device_id, device_name, last_seen, legacy_device_id, user_db_id FROM devices
 `
 
-type SelectAllDevicesRow struct {
-	UserDbID   int64
-	DeviceID   string
-	DeviceName string
-	LastSeen   pgtype.Timestamptz
-}
-
-func (q *Queries) SelectAllDevices(ctx context.Context) ([]SelectAllDevicesRow, error) {
-	rows, err := q.db.Query(ctx, selectAllDevices)
+func (q *Queries) GetAllDevices(ctx context.Context) ([]Device, error) {
+	rows, err := q.db.Query(ctx, getAllDevices)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SelectAllDevicesRow
+	var items []Device
 	for rows.Next() {
-		var i SelectAllDevicesRow
+		var i Device
 		if err := rows.Scan(
-			&i.UserDbID,
+			&i.DbID,
 			&i.DeviceID,
 			&i.DeviceName,
 			&i.LastSeen,
+			&i.LegacyDeviceID,
+			&i.UserDbID,
 		); err != nil {
 			return nil, err
 		}
@@ -86,36 +72,37 @@ func (q *Queries) SelectAllDevices(ctx context.Context) ([]SelectAllDevicesRow, 
 	return items, nil
 }
 
-const selectDevices = `-- name: SelectDevices :many
-SELECT users.db_id, user_id, device_id, device_name, last_seen
+const getDevices = `-- name: GetDevices :many
+SELECT devices.db_id, devices.device_id, devices.device_name, devices.last_seen, devices.legacy_device_id, devices.user_db_id, users.db_id, users.user_id, users.legacy_sync_code
 FROM devices
 INNER JOIN users ON devices.user_db_id = users.db_id
 WHERE user_id = $1
 `
 
-type SelectDevicesRow struct {
-	DbID       int64
-	UserID     string
-	DeviceID   string
-	DeviceName string
-	LastSeen   pgtype.Timestamptz
+type GetDevicesRow struct {
+	Device Device
+	User   User
 }
 
-func (q *Queries) SelectDevices(ctx context.Context, userID string) ([]SelectDevicesRow, error) {
-	rows, err := q.db.Query(ctx, selectDevices, userID)
+func (q *Queries) GetDevices(ctx context.Context, userID string) ([]GetDevicesRow, error) {
+	rows, err := q.db.Query(ctx, getDevices, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []SelectDevicesRow
+	var items []GetDevicesRow
 	for rows.Next() {
-		var i SelectDevicesRow
+		var i GetDevicesRow
 		if err := rows.Scan(
-			&i.DbID,
-			&i.UserID,
-			&i.DeviceID,
-			&i.DeviceName,
-			&i.LastSeen,
+			&i.Device.DbID,
+			&i.Device.DeviceID,
+			&i.Device.DeviceName,
+			&i.Device.LastSeen,
+			&i.Device.LegacyDeviceID,
+			&i.Device.UserDbID,
+			&i.User.DbID,
+			&i.User.UserID,
+			&i.User.LegacySyncCode,
 		); err != nil {
 			return nil, err
 		}
@@ -127,7 +114,43 @@ func (q *Queries) SelectDevices(ctx context.Context, userID string) ([]SelectDev
 	return items, nil
 }
 
-const selectLegacyDevicesEtag = `-- name: SelectLegacyDevicesEtag :one
+const getLegacyDevice = `-- name: GetLegacyDevice :one
+select
+    devices.db_id, devices.device_id, devices.device_name, devices.last_seen, devices.legacy_device_id, devices.user_db_id, users.db_id, users.user_id, users.legacy_sync_code
+from devices
+inner join users on devices.user_db_id = users.db_id
+where legacy_sync_code = $1 and legacy_device_id = $2
+limit 1
+`
+
+type GetLegacyDeviceParams struct {
+	LegacySyncCode string
+	LegacyDeviceID int64
+}
+
+type GetLegacyDeviceRow struct {
+	Device Device
+	User   User
+}
+
+func (q *Queries) GetLegacyDevice(ctx context.Context, arg GetLegacyDeviceParams) (GetLegacyDeviceRow, error) {
+	row := q.db.QueryRow(ctx, getLegacyDevice, arg.LegacySyncCode, arg.LegacyDeviceID)
+	var i GetLegacyDeviceRow
+	err := row.Scan(
+		&i.Device.DbID,
+		&i.Device.DeviceID,
+		&i.Device.DeviceName,
+		&i.Device.LastSeen,
+		&i.Device.LegacyDeviceID,
+		&i.Device.UserDbID,
+		&i.User.DbID,
+		&i.User.UserID,
+		&i.User.LegacySyncCode,
+	)
+	return i, err
+}
+
+const getLegacyDevicesEtag = `-- name: GetLegacyDevicesEtag :one
 SELECT sha256(convert_to(string_agg(device_name, '' ORDER BY device_name), 'UTF8'))
 FROM devices
 INNER JOIN users ON devices.user_db_id = users.db_id
@@ -135,26 +158,59 @@ WHERE legacy_sync_code = $1
 GROUP BY user_db_id
 `
 
-func (q *Queries) SelectLegacyDevicesEtag(ctx context.Context, legacySyncCode string) ([]byte, error) {
-	row := q.db.QueryRow(ctx, selectLegacyDevicesEtag, legacySyncCode)
+func (q *Queries) GetLegacyDevicesEtag(ctx context.Context, legacySyncCode string) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getLegacyDevicesEtag, legacySyncCode)
 	var sha256 []byte
 	err := row.Scan(&sha256)
 	return sha256, err
 }
 
+const insertDevice = `-- name: InsertDevice :one
+INSERT INTO devices (device_id, device_name, last_seen, legacy_device_id, user_db_id)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING db_id, device_id, device_name, last_seen, legacy_device_id, user_db_id
+`
+
+type InsertDeviceParams struct {
+	DeviceID       string
+	DeviceName     string
+	LastSeen       pgtype.Timestamptz
+	LegacyDeviceID int64
+	UserDbID       int64
+}
+
+func (q *Queries) InsertDevice(ctx context.Context, arg InsertDeviceParams) (Device, error) {
+	row := q.db.QueryRow(ctx, insertDevice,
+		arg.DeviceID,
+		arg.DeviceName,
+		arg.LastSeen,
+		arg.LegacyDeviceID,
+		arg.UserDbID,
+	)
+	var i Device
+	err := row.Scan(
+		&i.DbID,
+		&i.DeviceID,
+		&i.DeviceName,
+		&i.LastSeen,
+		&i.LegacyDeviceID,
+		&i.UserDbID,
+	)
+	return i, err
+}
+
 const updateLastSeenForDevice = `-- name: UpdateLastSeenForDevice :exec
 UPDATE devices
 SET last_seen = $1
-WHERE user_db_id = $2 AND device_id = $3
+WHERE db_id = $2
 `
 
 type UpdateLastSeenForDeviceParams struct {
 	LastSeen pgtype.Timestamptz
-	UserDbID int64
-	DeviceID string
+	DbID     int64
 }
 
 func (q *Queries) UpdateLastSeenForDevice(ctx context.Context, arg UpdateLastSeenForDeviceParams) error {
-	_, err := q.db.Exec(ctx, updateLastSeenForDevice, arg.LastSeen, arg.UserDbID, arg.DeviceID)
+	_, err := q.db.Exec(ctx, updateLastSeenForDevice, arg.LastSeen, arg.DbID)
 	return err
 }
