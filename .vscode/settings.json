@@ -1,5 +1,6 @@
 {
   "sqlfluff.excludeRules": [
     "L003"
-  ]
+  ],
+  "sqlfluff.dialect": "postgres"
 }

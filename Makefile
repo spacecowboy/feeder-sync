@@ -1,10 +1,10 @@
 .PHONY: build
 build: out/webserver out/store_transfer
 
-out/store_transfer: out
+out/store_transfer: out generate
 	go build -o out/store_transfer ./cmd/store_transfer
 
-out/webserver: out
+out/webserver: out generate
 	go build -o out/webserver ./cmd/webserver
 
 out:
@@ -22,3 +22,8 @@ deploy: build
 clean:
 	rm -rf out
 	go clean
+
+.PHONY: 
+generate:
+	rm -f internal/db/*
+	sqlc generate
