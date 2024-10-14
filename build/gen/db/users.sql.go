@@ -10,7 +10,9 @@ import (
 )
 
 const getAllUsers = `-- name: GetAllUsers :many
-SELECT db_id, user_id
+SELECT
+    db_id,
+    user_id
 FROM users
 `
 
@@ -84,7 +86,7 @@ func (q *Queries) GetUserDbIdBySyncCode(ctx context.Context, legacySyncCode stri
 }
 
 const insertUser = `-- name: InsertUser :one
-INSERT INTO users (user_id, legacy_sync_code) 
+INSERT INTO users (user_id, legacy_sync_code)
 VALUES ($1, $2)
 RETURNING db_id, user_id, legacy_sync_code
 `

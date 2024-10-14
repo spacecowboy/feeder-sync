@@ -12,27 +12,22 @@ import (
 )
 
 const getAllArticles = `-- name: GetAllArticles :many
-SELECT read_time, identifier, updated_at, user_db_id
+SELECT
+    db_id, read_time, identifier, updated_at, user_db_id
 FROM articles
 `
 
-type GetAllArticlesRow struct {
-	ReadTime   pgtype.Timestamptz
-	Identifier string
-	UpdatedAt  pgtype.Timestamptz
-	UserDbID   int64
-}
-
-func (q *Queries) GetAllArticles(ctx context.Context) ([]GetAllArticlesRow, error) {
+func (q *Queries) GetAllArticles(ctx context.Context) ([]Article, error) {
 	rows, err := q.db.Query(ctx, getAllArticles)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetAllArticlesRow
+	var items []Article
 	for rows.Next() {
-		var i GetAllArticlesRow
+		var i Article
 		if err := rows.Scan(
+			&i.DbID,
 			&i.ReadTime,
 			&i.Identifier,
 			&i.UpdatedAt,
@@ -48,41 +43,35 @@ func (q *Queries) GetAllArticles(ctx context.Context) ([]GetAllArticlesRow, erro
 	return items, nil
 }
 
-const getArticles = `-- name: GetArticles :many
-SELECT user_id, read_time, identifier, updated_at
+const getArticlesUpdatedSince = `-- name: GetArticlesUpdatedSince :many
+SELECT
+    db_id, read_time, identifier, updated_at, user_db_id
 FROM articles
-INNER JOIN users ON articles.user_db_id = users.db_id
-WHERE users.user_id = $1 AND updated_at > $2
+WHERE user_db_id = $1 AND updated_at > $2
 ORDER BY read_time DESC
 LIMIT 1000
 `
 
-type GetArticlesParams struct {
-	UserID    string
+type GetArticlesUpdatedSinceParams struct {
+	UserDbID  int64
 	UpdatedAt pgtype.Timestamptz
 }
 
-type GetArticlesRow struct {
-	UserID     string
-	ReadTime   pgtype.Timestamptz
-	Identifier string
-	UpdatedAt  pgtype.Timestamptz
-}
-
-func (q *Queries) GetArticles(ctx context.Context, arg GetArticlesParams) ([]GetArticlesRow, error) {
-	rows, err := q.db.Query(ctx, getArticles, arg.UserID, arg.UpdatedAt)
+func (q *Queries) GetArticlesUpdatedSince(ctx context.Context, arg GetArticlesUpdatedSinceParams) ([]Article, error) {
+	rows, err := q.db.Query(ctx, getArticlesUpdatedSince, arg.UserDbID, arg.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetArticlesRow
+	var items []Article
 	for rows.Next() {
-		var i GetArticlesRow
+		var i Article
 		if err := rows.Scan(
-			&i.UserID,
+			&i.DbID,
 			&i.ReadTime,
 			&i.Identifier,
 			&i.UpdatedAt,
+			&i.UserDbID,
 		); err != nil {
 			return nil, err
 		}
@@ -97,7 +86,7 @@ func (q *Queries) GetArticles(ctx context.Context, arg GetArticlesParams) ([]Get
 const insertArticle = `-- name: InsertArticle :one
 INSERT INTO articles (user_db_id, identifier, read_time, updated_at)
 VALUES ($1, $2, $3, $4)
-RETURNING db_id
+RETURNING db_id, read_time, identifier, updated_at, user_db_id
 `
 
 type InsertArticleParams struct {
@@ -107,14 +96,20 @@ type InsertArticleParams struct {
 	UpdatedAt  pgtype.Timestamptz
 }
 
-func (q *Queries) InsertArticle(ctx context.Context, arg InsertArticleParams) (int64, error) {
+func (q *Queries) InsertArticle(ctx context.Context, arg InsertArticleParams) (Article, error) {
 	row := q.db.QueryRow(ctx, insertArticle,
 		arg.UserDbID,
 		arg.Identifier,
 		arg.ReadTime,
 		arg.UpdatedAt,
 	)
-	var db_id int64
-	err := row.Scan(&db_id)
-	return db_id, err
+	var i Article
+	err := row.Scan(
+		&i.DbID,
+		&i.ReadTime,
+		&i.Identifier,
+		&i.UpdatedAt,
+		&i.UserDbID,
+	)
+	return i, err
 }

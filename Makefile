@@ -26,7 +26,7 @@ clean:
 	rm -rf out
 	go clean
 
-.PHONY: 
+.PHONY:
 generate:
-	rm -f internal/db/*
+	rm -rf build/gen
 	sqlc generate

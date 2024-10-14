@@ -8,9 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/spacecowboy/feeder-sync/internal/store"
-
 	"github.com/google/uuid"
+	"github.com/spacecowboy/feeder-sync/internal/store"
 )
 
 func TestMigrateV2(t *testing.T) {

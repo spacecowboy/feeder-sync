@@ -15,6 +15,8 @@ COPY . .
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o feeder-sync ./cmd/webserver
+# Build the migrator
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o feeder-sync-migrate ./cmd/db_migrator
 
 # Start a new stage from scratch
 FROM alpine:latest
@@ -26,6 +28,7 @@ WORKDIR /root/
 
 # Copy the pre-built binary file from the previous stage
 COPY --from=builder /app/feeder-sync .
+COPY --from=builder /app/feeder-sync-migrate .
 
 # Expose port 34217
 EXPOSE 34217

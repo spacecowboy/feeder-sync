@@ -2,19 +2,117 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/spacecowboy/feeder-sync/internal/store"
+	"github.com/jackc/pgx/v5"
+	"github.com/spacecowboy/feeder-sync/internal/repository"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+const (
+	user     = "username"
+	password = "password"
+	dbname   = "feedertest"
+)
+
+// NewDB is a helper that returns an open connection to a unique and isolated
+// test database, fully migrated and ready for you to query.
+func NewContainer(t *testing.T, ctx context.Context) (*postgres.PostgresContainer, error) {
+	t.Helper()
+
+	container, err := postgres.Run(
+		ctx,
+		"postgres:15",
+		postgres.WithDatabase(dbname),
+		postgres.WithUsername(user),
+		postgres.WithPassword(password),
+		WithTmpfs(),
+		// postgres.WithInitScripts(
+		// 	"../../../migrations_postgres/1_create_tables.up.sql",
+		// 	"../../../migrations_postgres/2_create_articles.up.sql",
+		// 	"../../../migrations_postgres/3_add_updated_at.up.sql",
+		// 	"../../../migrations_postgres/4_create_legacy_feeds.up.sql",
+		// 	"../../../migrations_postgres/5_add_updated_at_index.up.sql",
+		// ),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2).WithStartupTimeout(5*time.Second),
+		),
+	)
+
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	// Clean up the container after the test is complete
+	t.Cleanup(func() {
+		if err := container.Terminate(ctx); err != nil {
+			t.Fatalf("failed to terminate container: %s", err)
+		}
+	})
+
+	return container, nil
+}
+
+func WithTmpfs() testcontainers.CustomizeRequestOption {
+	return func(req *testcontainers.GenericContainerRequest) error {
+		req.Tmpfs = map[string]string{"/var/lib/postgresql/data": "rw"}
+		req.Env["PGDATA"] = "/var/lib/postgresql/data"
+		req.Cmd = []string{
+			"postgres",
+			"-c",
+			// turn off fsync for speed
+			"fsync=off",
+			"-c",
+			// log everything for debugging
+			"log_statement=all",
+		}
+		return nil
+	}
+}
+
+func NewRepository(t *testing.T, ctx context.Context, container *postgres.PostgresContainer) *repository.PostgresRepository {
+	t.Helper()
+
+	host, err := container.Host(ctx)
+	if err != nil {
+		t.Fatalf("Failed to get host: %s", err.Error())
+	}
+
+	port, err := container.MappedPort(ctx, "5432/tcp")
+	if err != nil {
+		t.Fatalf("Failed to get port: %s", err.Error())
+	}
+
+	conn, err := pgx.Connect(ctx, fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", user, password, host, port))
+	if err != nil {
+		t.Fatalf("Unable to connect to database: %v", err)
+	}
+	defer conn.Close(ctx)
+
+	// TODO migrations
+
+	return repository.NewPostgresRepository(conn)
+}
+
 func TestJoinSyncChainV1(t *testing.T) {
-	tempdir := t.TempDir()
-	server, err := NewSqliteServer(tempdir)
+	ctx := context.Background()
+	container, err := NewContainer(t, ctx)
+	if err != nil {
+		t.Fatalf("Failed to start postgres container: %s", err.Error())
+	}
+
+	repo := NewRepository(t, ctx, container)
+
+	server, err := NewServerWithRepo(repo)
 	if err != nil {
 		t.Fatalf("It blew up %v", err.Error())
 	}
@@ -26,11 +124,11 @@ func TestJoinSyncChainV1(t *testing.T) {
 	}()
 	goodSyncCode := "ba18973dd5889b64d8ec2a08ede95d94ee07d430d0d1b80b11bfd6a0375552c0"
 	goodDeviceId := int64(1234)
-	_, err = server.store.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
-	if err != nil {
-		t.Fatalf("Failed to insert device: %s", err.Error())
-	}
-	userDevice, err := server.store.GetLegacyDevice(goodSyncCode, goodDeviceId)
+	// _, err = server.repo.EnsureMigration(goodSyncCode, goodDeviceId, "foodevice")
+	// if err != nil {
+	// 	t.Fatalf("Failed to insert device: %s", err.Error())
+	// }
+	userDevice, err := server.repo.GetLegacyDevice(goodSyncCode, goodDeviceId)
 	if err != nil {
 		t.Fatalf("Got error: %s", err.Error())
 	}

@@ -10,27 +10,22 @@ import (
 )
 
 const getAllLegacyFeeds = `-- name: GetAllLegacyFeeds :many
-SELECT content_hash, content, etag, user_db_id
+SELECT
+    db_id, content_hash, content, etag, user_db_id
 FROM legacy_feeds
 `
 
-type GetAllLegacyFeedsRow struct {
-	ContentHash int64
-	Content     string
-	Etag        string
-	UserDbID    int64
-}
-
-func (q *Queries) GetAllLegacyFeeds(ctx context.Context) ([]GetAllLegacyFeedsRow, error) {
+func (q *Queries) GetAllLegacyFeeds(ctx context.Context) ([]LegacyFeed, error) {
 	rows, err := q.db.Query(ctx, getAllLegacyFeeds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetAllLegacyFeedsRow
+	var items []LegacyFeed
 	for rows.Next() {
-		var i GetAllLegacyFeedsRow
+		var i LegacyFeed
 		if err := rows.Scan(
+			&i.DbID,
 			&i.ContentHash,
 			&i.Content,
 			&i.Etag,
@@ -47,43 +42,35 @@ func (q *Queries) GetAllLegacyFeeds(ctx context.Context) ([]GetAllLegacyFeedsRow
 }
 
 const getLegacyFeeds = `-- name: GetLegacyFeeds :one
-SELECT user_id, content_hash, content, etag
+SELECT
+    db_id, content_hash, content, etag, user_db_id
 FROM legacy_feeds
-INNER JOIN users ON legacy_feeds.user_db_id = users.db_id
-WHERE user_id = $1
+WHERE user_db_id = $1
 LIMIT 1
 `
 
-type GetLegacyFeedsRow struct {
-	UserID      string
-	ContentHash int64
-	Content     string
-	Etag        string
-}
-
-func (q *Queries) GetLegacyFeeds(ctx context.Context, userID string) (GetLegacyFeedsRow, error) {
-	row := q.db.QueryRow(ctx, getLegacyFeeds, userID)
-	var i GetLegacyFeedsRow
+func (q *Queries) GetLegacyFeeds(ctx context.Context, userDbID int64) (LegacyFeed, error) {
+	row := q.db.QueryRow(ctx, getLegacyFeeds, userDbID)
+	var i LegacyFeed
 	err := row.Scan(
-		&i.UserID,
+		&i.DbID,
 		&i.ContentHash,
 		&i.Content,
 		&i.Etag,
+		&i.UserDbID,
 	)
 	return i, err
 }
 
 const getLegacyFeedsEtag = `-- name: GetLegacyFeedsEtag :one
-select
-    etag
-from legacy_feeds
-inner join users on legacy_feeds.user_db_id = users.db_id
-where user_id = $1
-limit 1
+SELECT etag
+FROM legacy_feeds
+WHERE user_db_id = $1
+LIMIT 1
 `
 
-func (q *Queries) GetLegacyFeedsEtag(ctx context.Context, userID string) (string, error) {
-	row := q.db.QueryRow(ctx, getLegacyFeedsEtag, userID)
+func (q *Queries) GetLegacyFeedsEtag(ctx context.Context, userDbID int64) (string, error) {
+	row := q.db.QueryRow(ctx, getLegacyFeedsEtag, userDbID)
 	var etag string
 	err := row.Scan(&etag)
 	return etag, err
@@ -94,8 +81,8 @@ INSERT INTO legacy_feeds (user_db_id, content_hash, content, etag)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (user_db_id) DO UPDATE
 SET content_hash = excluded.content_hash,
-    content = excluded.content,
-    etag = excluded.etag
+content = excluded.content,
+etag = excluded.etag
 RETURNING db_id
 `
 

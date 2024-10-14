@@ -10,31 +10,36 @@ import (
 
 type Repository interface {
 	Close(ctx context.Context) error
-	RegisterNewUser(deviceName string) (db.User, error)
-	AddDeviceToChain(userId uuid.UUID, deviceName string) (UserAndDevice, error)
-	AddDeviceToChainWithLegacy(syncCode string, deviceName string) (UserAndDevice, error)
-	GetDevices(userId uuid.UUID) ([]UserAndDevice, error)
-	GetLegacyDevice(syncCode string, deviceId int64) (UserAndDevice, error)
-	GetLegacyDevicesEtag(syncCode string) (string, error)
-	RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId int64) (int64, error)
-	UpdateLastSeenForDevice(device UserAndDevice) (int64, error)
-	GetArticles(userId uuid.UUID, sinceMillis int64) ([]db.Article, error)
-	AddLegacyArticle(userDbId int64, identifier string) error
-	GetLegacyFeeds(userId uuid.UUID) (db.LegacyFeed, error)
-	GetLegacyFeedsEtag(userId uuid.UUID) (string, error)
-	UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag string) (int64, error)
+	RegisterNewUser(ctx context.Context, deviceName string) (UserAndDevice, error)
+	AddDeviceToUser(ctx context.Context, user db.User, deviceName string) (db.Device, error)
+	GetDevices(ctx context.Context, user db.User) ([]db.Device, error)
+	// GetLegacyDevice(ctx context.Context, syncCode string, deviceId int64) (UserAndDevice, error)
+	GetDevicesEtag(ctx context.Context, user db.User) (string, error)
+	// RemoveDeviceWithLegacy(ctx context.Context, userDbId int64, legacyDeviceId int64) (int64, error)
+	UpdateLastSeenForDevice(ctx context.Context, device db.Device) error
+	GetArticlesUpdatedSince(ctx context.Context, user db.User, sinceMillis int64) ([]db.Article, error)
+	AddArticle(ctx context.Context, user db.User, identifier string) (db.Article, error)
+	// AddLegacyArticle(ctx context.Context, userDbId int64, identifier string) error
+	GetLegacyFeeds(ctx context.Context, user db.User) (db.LegacyFeed, error)
+	UpdateLegacyFeeds(ctx context.Context, user db.User, contentHash int64, content string, etag string) (int64, error)
+	GetUserByUserId(ctx context.Context, userId uuid.UUID) (db.User, error)
+	GetUserBySyncCode(ctx context.Context, syncCode string) (db.User, error)
+	GetDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) (db.Device, error)
+	RemoveDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) error
+
 	// Inserts a new user and device with the given legacy values if not already exists.
 	// NOOP if already exists.
-	EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error)
+	// EnsureMigration(ctx context.Context, syncCode string, deviceId int64, deviceName string) (int64, error)
+
 	// Admin functions
-	TransferUsers(repository Repository) error
-	AcceptUser(user *db.User) error
-	TransferDevices(repository Repository) error
-	AcceptDevice(device *UserAndDevice) error
-	TransferArticles(repository Repository) error
-	AcceptArticle(article *db.Article) error
-	TransferLegacyFeeds(repository Repository) error
-	AcceptLegacyFeeds(feeds *db.LegacyFeed) error
+	TransferUsers(ctx context.Context, repository Repository) error
+	AcceptUser(ctx context.Context, user *db.User) error
+	TransferDevices(ctx context.Context, repository Repository) error
+	AcceptDevice(ctx context.Context, device *UserAndDevice) error
+	TransferArticles(ctx context.Context, repository Repository) error
+	AcceptArticle(ctx context.Context, article *db.Article) error
+	TransferLegacyFeeds(ctx context.Context, repository Repository) error
+	AcceptLegacyFeeds(ctx context.Context, feeds *db.LegacyFeed) error
 	// For health check
 	PingContext(ctx context.Context) error
 }
@@ -43,40 +48,6 @@ type UserAndDevice struct {
 	User   db.User
 	Device db.Device
 }
-
-// type User struct {
-// 	UserDbId       int64
-// 	UserId         uuid.UUID
-// 	LegacySyncCode string
-// }
-
-// type UserDevice struct {
-// 	UserDbId   int64
-// 	UserId     uuid.UUID
-// 	DeviceId   uuid.UUID
-// 	DeviceName string
-// 	LastSeen   int64
-
-// 	// Migration fields
-// 	LegacySyncCode string
-// 	LegacyDeviceId int64
-// }
-
-// type Article struct {
-// 	UserDbId   int64
-// 	UserId     uuid.UUID
-// 	ReadTime   int64
-// 	Identifier string
-// 	UpdatedAt  int64
-// }
-
-// type LegacyFeeds struct {
-// 	UserDbId    int64
-// 	UserId      uuid.UUID
-// 	ContentHash int64
-// 	Content     string
-// 	Etag        string
-// }
 
 var ErrNoFeeds = errors.New("repository: no feeds")
 var ErrNoSuchDevice = errors.New("repository: no such device")

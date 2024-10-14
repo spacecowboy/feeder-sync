@@ -20,7 +20,6 @@ import (
 )
 
 // Move common code to shared utils instead
-
 const (
 	user     = "username"
 	password = "password"

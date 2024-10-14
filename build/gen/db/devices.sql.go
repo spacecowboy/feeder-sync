@@ -27,8 +27,8 @@ func (q *Queries) DeleteDevice(ctx context.Context, arg DeleteDeviceParams) erro
 }
 
 const deleteDeviceWithLegacyId = `-- name: DeleteDeviceWithLegacyId :exec
-delete from devices
-where user_db_id = $1 and legacy_device_id = $2
+DELETE FROM devices
+WHERE user_db_id = $1 AND legacy_device_id = $2
 `
 
 type DeleteDeviceWithLegacyIdParams struct {
@@ -73,36 +73,28 @@ func (q *Queries) GetAllDevices(ctx context.Context) ([]Device, error) {
 }
 
 const getDevices = `-- name: GetDevices :many
-SELECT devices.db_id, devices.device_id, devices.device_name, devices.last_seen, devices.legacy_device_id, devices.user_db_id, users.db_id, users.user_id, users.legacy_sync_code
+SELECT
+    db_id, device_id, device_name, last_seen, legacy_device_id, user_db_id
 FROM devices
-INNER JOIN users ON devices.user_db_id = users.db_id
-WHERE user_id = $1
+WHERE user_db_id = $1
 `
 
-type GetDevicesRow struct {
-	Device Device
-	User   User
-}
-
-func (q *Queries) GetDevices(ctx context.Context, userID string) ([]GetDevicesRow, error) {
-	rows, err := q.db.Query(ctx, getDevices, userID)
+func (q *Queries) GetDevices(ctx context.Context, userDbID int64) ([]Device, error) {
+	rows, err := q.db.Query(ctx, getDevices, userDbID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetDevicesRow
+	var items []Device
 	for rows.Next() {
-		var i GetDevicesRow
+		var i Device
 		if err := rows.Scan(
-			&i.Device.DbID,
-			&i.Device.DeviceID,
-			&i.Device.DeviceName,
-			&i.Device.LastSeen,
-			&i.Device.LegacyDeviceID,
-			&i.Device.UserDbID,
-			&i.User.DbID,
-			&i.User.UserID,
-			&i.User.LegacySyncCode,
+			&i.DbID,
+			&i.DeviceID,
+			&i.DeviceName,
+			&i.LastSeen,
+			&i.LegacyDeviceID,
+			&i.UserDbID,
 		); err != nil {
 			return nil, err
 		}
@@ -115,58 +107,51 @@ func (q *Queries) GetDevices(ctx context.Context, userID string) ([]GetDevicesRo
 }
 
 const getLegacyDevice = `-- name: GetLegacyDevice :one
-select
-    devices.db_id, devices.device_id, devices.device_name, devices.last_seen, devices.legacy_device_id, devices.user_db_id, users.db_id, users.user_id, users.legacy_sync_code
-from devices
-inner join users on devices.user_db_id = users.db_id
-where legacy_sync_code = $1 and legacy_device_id = $2
-limit 1
+SELECT
+    db_id, device_id, device_name, last_seen, legacy_device_id, user_db_id
+FROM devices
+WHERE user_db_id = $1 AND legacy_device_id = $2
+LIMIT 1
 `
 
 type GetLegacyDeviceParams struct {
-	LegacySyncCode string
+	UserDbID       int64
 	LegacyDeviceID int64
 }
 
-type GetLegacyDeviceRow struct {
-	Device Device
-	User   User
-}
-
-func (q *Queries) GetLegacyDevice(ctx context.Context, arg GetLegacyDeviceParams) (GetLegacyDeviceRow, error) {
-	row := q.db.QueryRow(ctx, getLegacyDevice, arg.LegacySyncCode, arg.LegacyDeviceID)
-	var i GetLegacyDeviceRow
+func (q *Queries) GetLegacyDevice(ctx context.Context, arg GetLegacyDeviceParams) (Device, error) {
+	row := q.db.QueryRow(ctx, getLegacyDevice, arg.UserDbID, arg.LegacyDeviceID)
+	var i Device
 	err := row.Scan(
-		&i.Device.DbID,
-		&i.Device.DeviceID,
-		&i.Device.DeviceName,
-		&i.Device.LastSeen,
-		&i.Device.LegacyDeviceID,
-		&i.Device.UserDbID,
-		&i.User.DbID,
-		&i.User.UserID,
-		&i.User.LegacySyncCode,
+		&i.DbID,
+		&i.DeviceID,
+		&i.DeviceName,
+		&i.LastSeen,
+		&i.LegacyDeviceID,
+		&i.UserDbID,
 	)
 	return i, err
 }
 
 const getLegacyDevicesEtag = `-- name: GetLegacyDevicesEtag :one
-SELECT sha256(convert_to(string_agg(device_name, '' ORDER BY device_name), 'UTF8'))
+SELECT
+    sha256(convert_to(string_agg(device_name, '' ORDER BY device_name), 'UTF8'))
 FROM devices
-INNER JOIN users ON devices.user_db_id = users.db_id
-WHERE legacy_sync_code = $1
+WHERE user_db_id = $1
 GROUP BY user_db_id
 `
 
-func (q *Queries) GetLegacyDevicesEtag(ctx context.Context, legacySyncCode string) ([]byte, error) {
-	row := q.db.QueryRow(ctx, getLegacyDevicesEtag, legacySyncCode)
+func (q *Queries) GetLegacyDevicesEtag(ctx context.Context, userDbID int64) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getLegacyDevicesEtag, userDbID)
 	var sha256 []byte
 	err := row.Scan(&sha256)
 	return sha256, err
 }
 
 const insertDevice = `-- name: InsertDevice :one
-INSERT INTO devices (device_id, device_name, last_seen, legacy_device_id, user_db_id)
+INSERT INTO devices (
+    device_id, device_name, last_seen, legacy_device_id, user_db_id
+)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING db_id, device_id, device_name, last_seen, legacy_device_id, user_db_id
 `

@@ -2,7 +2,11 @@ package repository
 
 import (
 	"context"
+	crand "crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"log"
 	"math/rand"
 	"time"
 
@@ -13,7 +17,15 @@ import (
 )
 
 type PostgresRepository struct {
-	pgConn *pgx.Conn
+	pgConn  *pgx.Conn
+	queries *db.Queries
+}
+
+func NewPostgresRepository(pgConn *pgx.Conn) *PostgresRepository {
+	return &PostgresRepository{
+		pgConn:  pgConn,
+		queries: db.New(pgConn),
+	}
 }
 
 // Verify interface implementation
@@ -23,23 +35,22 @@ func (r *PostgresRepository) Close(ctx context.Context) error {
 	return r.pgConn.Close(ctx)
 }
 
-func (r *PostgresRepository) RegisterNewUser(deviceName string) (db.User, error) {
-	ctx := context.Background()
+func (r *PostgresRepository) RegisterNewUser(ctx context.Context, deviceName string) (UserAndDevice, error) {
 	legacySyncCode, err := randomLegacySyncCode()
 	if err != nil {
-		return db.User{}, err
+		return UserAndDevice{}, err
 	}
 
 	insertUserParams := db.InsertUserParams{
 		UserID:         uuid.NewString(),
 		LegacySyncCode: legacySyncCode,
 	}
-	user, err := db.New(r.pgConn).InsertUser(ctx, insertUserParams)
+	user, err := r.queries.InsertUser(ctx, insertUserParams)
 	if err != nil {
-		return db.User{}, err
+		return UserAndDevice{}, err
 	}
 
-	_, err = db.New(r.pgConn).InsertDevice(ctx, db.InsertDeviceParams{
+	device, err := r.queries.InsertDevice(ctx, db.InsertDeviceParams{
 		UserDbID:       user.DbID,
 		DeviceID:       uuid.NewString(),
 		DeviceName:     deviceName,
@@ -50,20 +61,25 @@ func (r *PostgresRepository) RegisterNewUser(deviceName string) (db.User, error)
 		},
 	})
 	if err != nil {
-		return db.User{}, err
+		return UserAndDevice{}, err
 	}
 
-	return user, nil
+	return UserAndDevice{
+		User:   user,
+		Device: device,
+	}, nil
 }
 
-func (r *PostgresRepository) AddDeviceToChain(userId uuid.UUID, deviceName string) (store.UserAndDevice, error) {
-	ctx := context.Background()
-	user, err := db.New(r.pgConn).GetUserByUserId(ctx, userId.String())
-	if err != nil {
-		return store.UserAndDevice{}, err
-	}
+func (r *PostgresRepository) GetUserByUserId(ctx context.Context, userId uuid.UUID) (db.User, error) {
+	return r.queries.GetUserByUserId(ctx, userId.String())
+}
 
-	device, err := db.New(r.pgConn).InsertDevice(ctx, db.InsertDeviceParams{
+func (r *PostgresRepository) GetUserBySyncCode(ctx context.Context, syncCode string) (db.User, error) {
+	return r.queries.GetUserBySyncCode(ctx, syncCode)
+}
+
+func (r *PostgresRepository) AddDeviceToUser(ctx context.Context, user db.User, deviceName string) (db.Device, error) {
+	return r.queries.InsertDevice(ctx, db.InsertDeviceParams{
 		UserDbID:       user.DbID,
 		DeviceID:       uuid.NewString(),
 		DeviceName:     deviceName,
@@ -73,199 +89,122 @@ func (r *PostgresRepository) AddDeviceToChain(userId uuid.UUID, deviceName strin
 			Valid: true,
 		},
 	})
-	if err != nil {
-		return store.UserAndDevice{}, err
-	}
-
-	return store.UserAndDevice{User: user, Device: device}, nil
 }
 
-func (r *PostgresRepository) AddDeviceToChainWithLegacy(syncCode string, deviceName string) (store.UserAndDevice, error) {
-	ctx := context.Background()
-	user, err := db.New(r.pgConn).GetUserBySyncCode(ctx, syncCode)
-	if err != nil {
-		return store.UserAndDevice{}, err
-	}
+func (r *PostgresRepository) GetDevices(ctx context.Context, user db.User) ([]db.Device, error) {
+	return r.queries.GetDevices(ctx, user.DbID)
+}
 
-	device, err := db.New(r.pgConn).InsertDevice(ctx, db.InsertDeviceParams{
+func (r *PostgresRepository) GetDeviceWithLegacyId(ctx context.Context, user db.User, deviceId int64) (db.Device, error) {
+	return r.queries.GetLegacyDevice(ctx, db.GetLegacyDeviceParams{
 		UserDbID:       user.DbID,
-		DeviceID:       uuid.NewString(),
-		DeviceName:     deviceName,
-		LegacyDeviceID: rand.Int63(),
-		LastSeen: pgtype.Timestamptz{
-			Time:  time.Now(),
-			Valid: true,
-		},
-	})
-	if err != nil {
-		return store.UserAndDevice{}, err
-	}
-
-	return store.UserAndDevice{User: user, Device: device}, nil
-}
-
-func (r *PostgresRepository) GetDevices(userId uuid.UUID) ([]store.UserAndDevice, error) {
-	ctx := context.Background()
-	devices, err := db.New(r.pgConn).GetDevices(ctx, userId.String())
-	if err != nil {
-		return nil, err
-	}
-
-	var result []store.UserAndDevice
-	for _, device := range devices {
-		result = append(result, store.UserAndDevice{
-			User:   db.User{DbID: device.UserDbID},
-			Device: device,
-		})
-	}
-
-	return result, nil
-}
-
-func (r *PostgresRepository) GetLegacyDevice(syncCode string, deviceId int64) (store.UserAndDevice, error) {
-	ctx := context.Background()
-	legacyDeviceRow, err := db.New(r.pgConn).GetLegacyDevice(ctx, db.GetLegacyDeviceParams{
-		LegacySyncCode: syncCode,
 		LegacyDeviceID: deviceId,
 	})
-	if err != nil {
-		return store.UserAndDevice{}, err
-	}
-
-	return store.UserAndDevice{User: legacyDeviceRow.User, Device: legacyDeviceRow.Device}, nil
 }
 
-func (r *PostgresRepository) GetLegacyDevicesEtag(syncCode string) (string, error) {
-	ctx := context.Background()
-	etagBytes, err := db.New(r.pgConn).GetLegacyDevicesEtag(ctx, syncCode)
+func (r *PostgresRepository) GetDevicesEtag(ctx context.Context, user db.User) (string, error) {
+	etagBytes, err := r.queries.GetLegacyDevicesEtag(ctx, user.DbID)
 	if err != nil {
 		return "", err
 	}
 	return string(etagBytes), nil
 }
 
-func (r *PostgresRepository) RemoveDeviceWithLegacy(userDbId int64, legacyDeviceId int64) (int64, error) {
-	ctx := context.Background()
-	result, err := db.New(r.pgConn).DeleteDeviceWithLegacyId(ctx, db.DeleteDeviceWithLegacyIdParams{
-		UserDbID:       userDbId,
+func (r *PostgresRepository) RemoveDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) error {
+	return r.queries.DeleteDeviceWithLegacyId(ctx, db.DeleteDeviceWithLegacyIdParams{
+		UserDbID:       user.DbID,
 		LegacyDeviceID: legacyDeviceId,
 	})
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
 }
 
-func (r *PostgresRepository) UpdateLastSeenForDevice(device store.UserAndDevice) (int64, error) {
-	ctx := context.Background()
-	result, err := db.New(r.pgConn).UpdateLastSeenForDevice(ctx, db.UpdateLastSeenForDeviceParams{
+func (r *PostgresRepository) UpdateLastSeenForDevice(ctx context.Context, device db.Device) error {
+	return r.queries.UpdateLastSeenForDevice(ctx, db.UpdateLastSeenForDeviceParams{
 		LastSeen: pgtype.Timestamptz{
 			Time:  time.Now(),
 			Valid: true,
 		},
-		DbID: device.Device.DbID,
+		DbID: device.DbID,
 	})
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
 }
 
-func (r *PostgresRepository) GetArticles(userId uuid.UUID, sinceMillis int64) ([]db.Article, error) {
-	ctx := context.Background()
-	articles, err := db.New(r.pgConn).GetArticles(ctx, db.GetArticlesParams{
-		UserID:      userId.String(),
-		SinceMillis: sinceMillis,
+func (r *PostgresRepository) GetArticlesUpdatedSince(ctx context.Context, user db.User, sinceMillis int64) ([]db.Article, error) {
+	return r.queries.GetArticlesUpdatedSince(ctx, db.GetArticlesUpdatedSinceParams{
+		UserDbID: user.DbID,
+		UpdatedAt: pgtype.Timestamptz{
+			Time:  time.UnixMilli(sinceMillis),
+			Valid: true,
+		},
 	})
-	if err != nil {
-		return nil, err
-	}
-	return articles, nil
 }
 
-func (r *PostgresRepository) AddLegacyArticle(userDbId int64, identifier string) error {
-	ctx := context.Background()
-	err := db.New(r.pgConn).InsertLegacyArticle(ctx, db.InsertLegacyArticleParams{
-		UserDbID:   userDbId,
+func (r *PostgresRepository) AddArticle(ctx context.Context, user db.User, identifier string) (db.Article, error) {
+	timestamp := pgtype.Timestamptz{
+		Time:  time.Now(),
+		Valid: true,
+	}
+	return r.queries.InsertArticle(ctx, db.InsertArticleParams{
+		UserDbID:   user.DbID,
 		Identifier: identifier,
+		UpdatedAt:  timestamp,
+		ReadTime:   timestamp,
 	})
-	return err
 }
 
-func (r *PostgresRepository) GetLegacyFeeds(userId uuid.UUID) (db.LegacyFeed, error) {
-	ctx := context.Background()
-	feeds, err := db.New(r.pgConn).GetLegacyFeeds(ctx, userId.String())
-	if err != nil {
-		return db.LegacyFeed{}, err
-	}
-	return feeds, nil
+func (r *PostgresRepository) GetLegacyFeeds(ctx context.Context, user db.User) (db.LegacyFeed, error) {
+	return r.queries.GetLegacyFeeds(ctx, user.DbID)
 }
 
-func (r *PostgresRepository) GetLegacyFeedsEtag(userId uuid.UUID) (string, error) {
-	ctx := context.Background()
-	etag, err := db.New(r.pgConn).GetLegacyFeedsEtag(ctx, userId.String())
-	if err != nil {
-		return "", err
-	}
-	return etag, nil
-}
-
-func (r *PostgresRepository) UpdateLegacyFeeds(userDbId int64, contentHash int64, content string, etag string) (int64, error) {
-	ctx := context.Background()
-	result, err := db.New(r.pgConn).UpdateLegacyFeeds(ctx, db.UpdateLegacyFeedsParams{
-		UserDbID:    userDbId,
+func (r *PostgresRepository) UpdateLegacyFeeds(ctx context.Context, user db.User, contentHash int64, content string, etag string) (int64, error) {
+	return r.queries.UpdateLegacyFeeds(ctx, db.UpdateLegacyFeedsParams{
+		UserDbID:    user.DbID,
 		ContentHash: contentHash,
 		Content:     content,
 		Etag:        etag,
 	})
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
 }
 
-func (r *PostgresRepository) EnsureMigration(syncCode string, deviceId int64, deviceName string) (int64, error) {
-	ctx := context.Background()
-	result, err := db.New(r.pgConn).EnsureMigration(ctx, db.EnsureMigrationParams{
-		LegacySyncCode: syncCode,
-		LegacyDeviceID: deviceId,
-		DeviceName:     deviceName,
-	})
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
+// func (r *PostgresRepository) EnsureMigration(ctx context.Context, syncCode string, deviceId int64, deviceName string) (int64, error) {
 
-func (r *PostgresRepository) TransferUsers(repository store.Repository) error {
+// 	result, err := r.queries.EnsureMigration(ctx, db.EnsureMigrationParams{
+// 		LegacySyncCode: syncCode,
+// 		LegacyDeviceID: deviceId,
+// 		DeviceName:     deviceName,
+// 	})
+// 	if err != nil {
+// 		return 0, err
+// 	}
+// 	return result.RowsAffected(), nil
+// }
+
+func (r *PostgresRepository) TransferUsers(ctx context.Context, repository Repository) error {
 	return errors.New("not implemented")
 }
 
-func (r *PostgresRepository) AcceptUser(user *db.User) error {
+func (r *PostgresRepository) AcceptUser(ctx context.Context, user *db.User) error {
 	return errors.New("not implemented")
 }
 
-func (r *PostgresRepository) TransferDevices(repository store.Repository) error {
+func (r *PostgresRepository) TransferDevices(ctx context.Context, repository Repository) error {
 	return errors.New("not implemented")
 }
 
-func (r *PostgresRepository) AcceptDevice(device *store.UserAndDevice) error {
+func (r *PostgresRepository) AcceptDevice(ctx context.Context, device *UserAndDevice) error {
 	return errors.New("not implemented")
 }
 
-func (r *PostgresRepository) TransferArticles(repository store.Repository) error {
+func (r *PostgresRepository) TransferArticles(ctx context.Context, repository Repository) error {
 	return errors.New("not implemented")
 }
 
-func (r *PostgresRepository) AcceptArticle(article *db.Article) error {
+func (r *PostgresRepository) AcceptArticle(ctx context.Context, article *db.Article) error {
 	return errors.New("not implemented")
 }
 
-func (r *PostgresRepository) TransferLegacyFeeds(repository store.Repository) error {
+func (r *PostgresRepository) TransferLegacyFeeds(ctx context.Context, repository Repository) error {
 	return errors.New("not implemented")
 }
 
-func (r *PostgresRepository) AcceptLegacyFeeds(feeds *db.LegacyFeed) error {
+func (r *PostgresRepository) AcceptLegacyFeeds(ctx context.Context, feeds *db.LegacyFeed) error {
 	return errors.New("not implemented")
 }
 
@@ -274,6 +213,15 @@ func (r *PostgresRepository) PingContext(ctx context.Context) error {
 }
 
 func randomLegacySyncCode() (string, error) {
-	// Implement the logic to generate a random legacy sync code
-	return "randomSyncCode", nil
+	bytes := make([]byte, 30)
+	if _, err := crand.Read(bytes); err != nil {
+		return "", err
+	}
+	syncCode := fmt.Sprintf("feed%s", hex.EncodeToString(bytes))
+
+	if got := len(syncCode); got != 64 {
+		log.Printf("code was %d long", got)
+		return "", fmt.Errorf("Code was %d long not 64", got)
+	}
+	return syncCode, nil
 }
