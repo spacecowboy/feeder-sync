@@ -19,7 +19,7 @@ import (
 
 type FeederServer struct {
 	repo   repository.Repository
-	router *gin.Engine
+	Router *gin.Engine
 }
 
 func NewServerWithPostgres(connString string) (*FeederServer, error) {
@@ -40,7 +40,7 @@ func NewServerWithRepo(repo repository.Repository) (*FeederServer, error) {
 
 	server := FeederServer{
 		repo:   repo,
-		router: router,
+		Router: router,
 	}
 
 	// Middleware
@@ -102,11 +102,11 @@ func (s *FeederServer) Close() error {
 }
 
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.router.ServeHTTP(w, r)
+	s.Router.ServeHTTP(w, r)
 }
 
 func (s *FeederServer) handleHealth(c *gin.Context) {
-	if s.router != nil && s.repo != nil {
+	if s.Router != nil && s.repo != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "Initialized",
 		})
