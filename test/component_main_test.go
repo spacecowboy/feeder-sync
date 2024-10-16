@@ -9,14 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5"
+	"github.com/spacecowboy/feeder-sync/internal/migrations"
 	"github.com/spacecowboy/feeder-sync/internal/repository"
 	"github.com/spacecowboy/feeder-sync/internal/server"
-	"github.com/spacecowboy/feeder-sync/sql"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -65,14 +63,12 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	connString = fmt.Sprintf("pgx5://username:password@%s:%d/feedertest?sslmode=disable", host, port.Int())
+	connString = fmt.Sprintf("postgresql://username:password@%s:%d/feedertest?sslmode=disable", host, port.Int())
 
-	if err := runMigrations(connString); err != nil {
+	if err := migrations.RunMigrations(connString); err != nil {
 		fmt.Printf("Failed to run migrations: %s\n", err.Error())
 		os.Exit(1)
 	}
-
-	connString = fmt.Sprintf("postgresql://username:password@%s:%d/feedertest?sslmode=disable", host, port.Int())
 
 	// Start the server
 	srv, err := server.NewServerWithPostgres(connString)
@@ -151,29 +147,6 @@ func WithTmpfs() testcontainers.CustomizeRequestOption {
 		}
 		return nil
 	}
-}
-
-func runMigrations(dbURL string) error {
-	log.Println("Loading migrations...")
-	d, err := iofs.New(sql.MigrationsFS, "schema")
-	if err != nil {
-		return err
-	}
-
-	log.Println("Creating migrator...")
-	m, err := migrate.NewWithSourceInstance("iofs", d, dbURL)
-	if err != nil {
-		return err
-	}
-
-	log.Println("Running migrations as necessary...")
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return err
-	}
-
-	log.Println("All migrations applied successfully")
-
-	return nil
 }
 
 func NewRepository(ctx context.Context, container *postgres.PostgresContainer) *repository.PostgresRepository {

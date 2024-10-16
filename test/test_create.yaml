@@ -1,0 +1,35 @@
+- name: v1 Create No Basic Auth
+  request:
+    method: POST
+    path: /api/v1/create
+    headers:
+      Content-Type: application/json
+    body: |
+      {
+        "name": "test",
+        "age": 20
+      }
+  response:
+    status: 401
+
+- name: v1 Create Basic Auth
+  request:
+    method: POST
+    path: /api/v1/create
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+    body: |
+      {
+        "name": "test",
+        "age": 20
+      }
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    body: |
+      {
+        "deviceId": 1,
+        "syncCode": "foo"
+      }
