@@ -74,6 +74,15 @@ func (suite *YamlTestSuite) TearDownSuite() {
 	// Do nothing
 }
 
+func (suite *YamlTestSuite) replacevariables(input string) string {
+	replacements := []string{}
+	for k, v := range suite.Variables {
+		replacements = append(replacements, fmt.Sprintf("{{%s}}", k), v)
+	}
+	replacer := strings.NewReplacer(replacements...)
+	return replacer.Replace(input)
+}
+
 // TestCases runs the test cases
 func (suite *YamlTestSuite) TestCases() {
 	baseUrl := fmt.Sprintf("http://%s", listenAddress)
@@ -82,33 +91,31 @@ func (suite *YamlTestSuite) TestCases() {
 		suite.Run(testCase.Name, func() {
 			t := suite.T()
 
+			// Create a copy of the testCase to avoid modifying the original
+			tc := testCase
+
 			// Replace variables in the request body
-			body := testCase.Request.Body
-			for k, v := range suite.Variables {
-				body = strings.ReplaceAll(body, fmt.Sprintf("{{%s}}", k), v)
-			}
+			tc.Request.Body = suite.replacevariables(tc.Request.Body)
 
 			// Replace variables in the headers
-			for k, v := range testCase.Request.Headers {
-				for varName, varValue := range suite.Variables {
-					testCase.Request.Headers[k] = strings.ReplaceAll(v, fmt.Sprintf("{{%s}}", varName), varValue)
-				}
+			for k, v := range tc.Request.Headers {
+				tc.Request.Headers[k] = suite.replacevariables(v)
 			}
 
 			// Ensure the body is a valid JSON
-			if body != "" {
-				err := json.Unmarshal([]byte(body), &map[string]interface{}{})
-				require.NoErrorf(t, err, "Body was %s", body)
+			if tc.Request.Body != "" {
+				err := json.Unmarshal([]byte(tc.Request.Body), &map[string]interface{}{})
+				require.NoErrorf(t, err, "Body was %s", tc.Request.Body)
 			}
 
 			req, err := http.NewRequest(
-				testCase.Request.Method,
-				fmt.Sprintf("%s%s", baseUrl, testCase.Request.Path),
-				strings.NewReader(body),
+				tc.Request.Method,
+				fmt.Sprintf("%s%s", baseUrl, tc.Request.Path),
+				strings.NewReader(tc.Request.Body),
 			)
 			require.NoError(t, err, "Failed to create request")
 
-			for k, v := range testCase.Request.Headers {
+			for k, v := range tc.Request.Headers {
 				req.Header.Add(k, v)
 			}
 
@@ -120,16 +127,16 @@ func (suite *YamlTestSuite) TestCases() {
 			require.NoError(t, err, "Failed to read response body")
 
 			// Check response status
-			suite.Equal(testCase.Response.Status, resp.StatusCode)
+			suite.Equal(tc.Response.Status, resp.StatusCode)
 
 			// Check response headers
-			for k, v := range testCase.Response.Headers {
+			for k, v := range tc.Response.Headers {
 				suite.Equal(v, resp.Header.Get(k), "Header did not match, body: %s", string(respBody))
 			}
 
-			if testCase.Response.Body != "" {
+			if tc.Response.Body != "" {
 				var expectedBody, actualBody map[string]interface{}
-				err = json.Unmarshal([]byte(testCase.Response.Body), &expectedBody)
+				err = json.Unmarshal([]byte(tc.Response.Body), &expectedBody)
 				require.NoError(t, err, "Failed to unmarshal expected response body")
 
 				err = json.Unmarshal(respBody, &actualBody)
@@ -139,7 +146,7 @@ func (suite *YamlTestSuite) TestCases() {
 			}
 
 			// Check response body types
-			for jsonPath, expectedType := range testCase.Response.BodyTypes {
+			for jsonPath, expectedType := range tc.Response.BodyTypes {
 				value := gjson.Get(string(respBody), jsonPath)
 				switch expectedType {
 				case "string":
@@ -154,7 +161,7 @@ func (suite *YamlTestSuite) TestCases() {
 			}
 
 			// Extract variables from the response body
-			for varName, jsonPath := range testCase.Extract {
+			for varName, jsonPath := range tc.Extract {
 				// Extract value from the response body
 				value := gjson.Get(string(respBody), jsonPath)
 
