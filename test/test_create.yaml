@@ -11,8 +11,12 @@
       }
   response:
     status: 401
+    body: |
+      {
+        "error": "Unauthorized"
+      }
 
-- name: v1 Create Basic Auth
+- name: v1 Create Bad body
   request:
     method: POST
     path: /api/v1/create
@@ -25,11 +29,67 @@
         "age": 20
       }
   response:
+    status: 400
+    body: |
+      {
+        "error": "Missing deviceName"
+      }
+
+- name: v1 Create Happy Path
+  request:
+    method: POST
+    path: /api/v1/create
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+    body: |
+      {
+        "deviceName": "alice"
+      }
+  response:
     status: 200
     headers:
       Content-Type: application/json; charset=utf-8
+    bodyType:
+      deviceId: int
+      syncCode: string
+  extract:
+    deviceId: deviceId
+    syncCode: syncCode
+
+- name: v1 Join No Basic Auth
+  request:
+    method: POST
+    path: /api/v1/join
+    headers:
+      Content-Type: application/json
+      X-FEEDER-ID: "{{syncCode}}"
     body: |
       {
-        "deviceId": 1,
-        "syncCode": "foo"
+        "deviceName": "bob"
+      }
+  response:
+    status: 401
+    body: |
+      {
+        "error": "Unauthorized"
+      }
+
+- name: v1 Join Bad Body
+  request:
+    method: POST
+    path: /api/v1/join
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+    body: |
+      {
+        "foo": "bob"
+      }
+  response:
+    status: 400
+    body: |
+      {
+        "error": "Missing deviceName"
       }

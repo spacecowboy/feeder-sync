@@ -23,7 +23,7 @@ func AssertBasicAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, password, ok := c.Request.BasicAuth()
 		if !ok || user != HARDCODED_USER || password != HARDCODED_PASSWORD {
-			c.AbortWithStatus(http.StatusUnauthorized)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
 		c.Next()

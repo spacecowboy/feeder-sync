@@ -10,6 +10,7 @@ require (
 	github.com/stretchr/testify v1.9.0
 	github.com/testcontainers/testcontainers-go v0.33.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.33.0
+	github.com/tidwall/gjson v1.18.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -94,6 +95,8 @@ require (
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa // indirect
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect

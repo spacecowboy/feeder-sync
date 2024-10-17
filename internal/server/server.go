@@ -392,6 +392,11 @@ func (s *FeederServer) handleCreateV1(c *gin.Context) {
 		return
 	}
 
+	if createChainRequest.DeviceName == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing deviceName"})
+		return
+	}
+
 	userDevice, err := s.repo.RegisterNewUser(c, createChainRequest.DeviceName)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Badness"})
@@ -413,6 +418,11 @@ func (s *FeederServer) handleJoinV1(c *gin.Context) {
 
 	if err := c.BindJSON(&joinChainRequest); err != nil {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Bad body"})
+		return
+	}
+
+	if joinChainRequest.DeviceName == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing deviceName"})
 		return
 	}
 
