@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -21,16 +20,10 @@ func main() {
 	}
 
 	router, err := server.NewServerWithPostgres(conn)
-
 	if err != nil {
 		log.Fatalf("Failed to create server: %v", err)
 	}
-	defer func() {
-		if err := router.Close(); err != nil {
-			fmt.Printf("Failed to close server: %v", err)
-			return
-		}
-	}()
+	defer router.Close()
 
 	srv := &http.Server{
 		Addr:    ":34217",
@@ -61,7 +54,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal("Server forced to shutdown: ", err)
+		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
 	log.Println("Server exiting")
