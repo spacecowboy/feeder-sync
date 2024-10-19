@@ -28,6 +28,7 @@ func RunMigrations(dbURL string) error {
 	if err != nil {
 		return err
 	}
+	defer m.Close()
 
 	log.Println("Running migrations as necessary...")
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
