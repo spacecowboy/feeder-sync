@@ -29,8 +29,9 @@
       deviceId: int
       syncCode: string
   extract:
-    deviceId: deviceId
-    syncCode: syncCode
+    body:
+      deviceId: deviceId
+      syncCode: syncCode
 
 # Test GET everything before there are feeds or readmarks
 - name: v1 Get Feeds Empty
@@ -189,7 +190,8 @@
       deviceId: int
       syncCode: string
   extract:
-    newDeviceId: deviceId
+    body:
+      newDeviceId: deviceId
 
 # GET devices after joining
 - name: v1 GET devices after joining

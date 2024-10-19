@@ -17,10 +17,15 @@ import (
 )
 
 type TestCase struct {
-	Name     string            `yaml:"name"`
-	Request  Request           `yaml:"request"`
-	Response Response          `yaml:"response"`
-	Extract  map[string]string `yaml:"extract"`
+	Name     string    `yaml:"name"`
+	Request  Request   `yaml:"request"`
+	Response Response  `yaml:"response"`
+	Extract  Extractor `yaml:"extract"`
+}
+
+type Extractor struct {
+	Header map[string]string `yaml:"header"`
+	Body   map[string]string `yaml:"body"`
 }
 
 type Request struct {
@@ -167,11 +172,19 @@ func (suite *YamlTestSuite) TestCases() {
 			}
 
 			// Extract variables from the response body
-			for varName, jsonPath := range tc.Extract {
+			for varName, jsonPath := range tc.Extract.Body {
 				// Extract value from the response body
 				value := gjson.Get(string(respBody), jsonPath)
 
 				suite.Variables[varName] = value.String()
+			}
+
+			// Extract variables from the response headers
+			for varName, headerName := range tc.Extract.Header {
+				// Extract value from the response headers
+				value := resp.Header.Get(headerName)
+
+				suite.Variables[varName] = value
 			}
 		})
 	}

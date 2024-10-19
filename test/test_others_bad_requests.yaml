@@ -27,8 +27,9 @@
       deviceId: int
       syncCode: string
   extract:
-    deviceId: deviceId
-    syncCode: syncCode
+    body:
+      deviceId: deviceId
+      syncCode: syncCode
 
 
 - name: v1 Join Bad Body
