@@ -110,11 +110,18 @@ func (r *PostgresRepository) GetDevicesEtag(ctx context.Context, user db.User) (
 	return string(etagBytes), nil
 }
 
-func (r *PostgresRepository) RemoveDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) error {
-	return r.queries.DeleteDeviceWithLegacyId(ctx, db.DeleteDeviceWithLegacyIdParams{
+func (r *PostgresRepository) RemoveDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) (int, error) {
+	ids, err := r.queries.DeleteDeviceWithLegacyId(ctx, db.DeleteDeviceWithLegacyIdParams{
 		UserDbID:       user.DbID,
 		LegacyDeviceID: legacyDeviceId,
 	})
+	if err != nil {
+		return 0, err
+	}
+	if len(ids) == 0 {
+		return 0, ErrNoSuchDevice
+	}
+	return len(ids), err
 }
 
 func (r *PostgresRepository) UpdateLastSeenForDevice(ctx context.Context, device db.Device) error {
@@ -151,7 +158,11 @@ func (r *PostgresRepository) AddArticle(ctx context.Context, user db.User, ident
 }
 
 func (r *PostgresRepository) GetLegacyFeeds(ctx context.Context, user db.User) (db.LegacyFeed, error) {
-	return r.queries.GetLegacyFeeds(ctx, user.DbID)
+	feeds, err := r.queries.GetLegacyFeeds(ctx, user.DbID)
+	if err != nil && err == pgx.ErrNoRows {
+		return feeds, ErrNoFeeds
+	}
+	return feeds, err
 }
 
 func (r *PostgresRepository) UpdateLegacyFeeds(ctx context.Context, user db.User, contentHash int64, content string, etag string) (int64, error) {

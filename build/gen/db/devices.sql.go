@@ -11,9 +11,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const deleteDevice = `-- name: DeleteDevice :exec
+const deleteDevice = `-- name: DeleteDevice :many
 DELETE FROM devices
 WHERE user_db_id = $1 AND device_id = $2
+RETURNING device_id
 `
 
 type DeleteDeviceParams struct {
@@ -21,14 +22,30 @@ type DeleteDeviceParams struct {
 	DeviceID string
 }
 
-func (q *Queries) DeleteDevice(ctx context.Context, arg DeleteDeviceParams) error {
-	_, err := q.db.Exec(ctx, deleteDevice, arg.UserDbID, arg.DeviceID)
-	return err
+func (q *Queries) DeleteDevice(ctx context.Context, arg DeleteDeviceParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, deleteDevice, arg.UserDbID, arg.DeviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var device_id string
+		if err := rows.Scan(&device_id); err != nil {
+			return nil, err
+		}
+		items = append(items, device_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const deleteDeviceWithLegacyId = `-- name: DeleteDeviceWithLegacyId :exec
+const deleteDeviceWithLegacyId = `-- name: DeleteDeviceWithLegacyId :many
 DELETE FROM devices
 WHERE user_db_id = $1 AND legacy_device_id = $2
+RETURNING legacy_device_id
 `
 
 type DeleteDeviceWithLegacyIdParams struct {
@@ -36,9 +53,24 @@ type DeleteDeviceWithLegacyIdParams struct {
 	LegacyDeviceID int64
 }
 
-func (q *Queries) DeleteDeviceWithLegacyId(ctx context.Context, arg DeleteDeviceWithLegacyIdParams) error {
-	_, err := q.db.Exec(ctx, deleteDeviceWithLegacyId, arg.UserDbID, arg.LegacyDeviceID)
-	return err
+func (q *Queries) DeleteDeviceWithLegacyId(ctx context.Context, arg DeleteDeviceWithLegacyIdParams) ([]int64, error) {
+	rows, err := q.db.Query(ctx, deleteDeviceWithLegacyId, arg.UserDbID, arg.LegacyDeviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var legacy_device_id int64
+		if err := rows.Scan(&legacy_device_id); err != nil {
+			return nil, err
+		}
+		items = append(items, legacy_device_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getAllDevices = `-- name: GetAllDevices :many

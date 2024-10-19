@@ -1,0 +1,155 @@
+# All of these endpoints should return 401 Unauthorized if no basic auth is provided
+# apiKeyOnly.POST("v1/create", server.handleCreateV1)
+# apiKeyOnly.POST("v2/create", server.handleCreateV2)
+# apiKeyUserId.POST("v1/join", server.handleJoinV1)
+# apiKeyUserId.POST("v2/join", server.handleJoinV2)
+# fullyAuthed.GET("v1/ereadmark", server.handleGETReadmarkV1)
+# fullyAuthed.POST("v1/ereadmark", server.handlePOSTReadmarkV1)
+# fullyAuthed.POST("v1/devices", server.handleDeviceGetV1)
+# fullyAuthed.DELETE("v1/devices/:id", server.handleDeviceDeleteV1)
+# fullyAuthed.GET("v1/feeds", server.handleGETFeedsV1)
+# fullyAuthed.POST("v1/feeds", server.handlePOSTFeedsV1)
+
+- name: v1 Create No Basic Auth
+  request:
+    method: POST
+    path: /api/v1/create
+    headers:
+      Content-Type: application/json
+    body: |
+      {}
+  response:
+    status: 401
+    body: |
+      {
+        "error": "Unauthorized"
+      }
+
+- name: v2 Create No Basic Auth
+  request:
+    method: POST
+    path: /api/v2/create
+    headers:
+      Content-Type: application/json
+    body: |
+      {}
+  response:
+    status: 401
+    body: |
+      {
+        "error": "Unauthorized"
+      }
+
+- name: v1 Join No Basic Auth
+  request:
+    method: POST
+    path: /api/v1/join
+    headers:
+      Content-Type: application/json
+    body: |
+      {}
+  response:
+    status: 401
+    body: |
+      {
+        "error": "Unauthorized"
+      }
+
+- name: v2 Join No Basic Auth
+  request:
+    method: POST
+    path: /api/v2/join
+    headers:
+      Content-Type: application/json
+    body: |
+      {}
+  response:
+    status: 401
+    body: |
+      {
+        "error": "Unauthorized"
+      }
+
+- name: v1 GET Readmark No Basic Auth
+  request:
+    method: GET
+    path: /api/v1/ereadmark
+    headers:
+      Content-Type: application/json
+  response:
+    status: 401
+    body: |
+      {
+        "error": "Unauthorized"
+      }
+
+- name: v1 POST Readmark No Basic Auth
+  request:
+    method: POST
+    path: /api/v1/ereadmark
+    headers:
+      Content-Type: application/json
+    body: |
+      {}
+  response:
+    status: 401
+    body: |
+      {
+        "error": "Unauthorized"
+      }
+
+- name: v1 Devices No Basic Auth
+  request:
+    method: GET
+    path: /api/v1/devices
+    headers:
+      Content-Type: application/json
+    body: |
+      {}
+  response:
+    status: 401
+    body: |
+      {
+        "error": "Unauthorized"
+      }
+
+- name: v1 Delete Device No Basic Auth
+  request:
+    method: DELETE
+    path: /api/v1/devices/1
+    headers:
+      Content-Type: application/json
+  response:
+    status: 401
+    body: |
+      {
+        "error": "Unauthorized"
+      }
+
+- name: v1 GET Feeds No Basic Auth
+  request:
+    method: GET
+    path: /api/v1/feeds
+    headers:
+      Content-Type: application/json
+  response:
+    status: 401
+    body: |
+      {
+        "error": "Unauthorized"
+      }
+
+- name: v1 POST Feeds No Basic Auth
+  request:
+    method: POST
+    path: /api/v1/feeds
+    headers:
+      Content-Type: application/json
+    body: |
+      {}
+  response:
+    status: 401
+    body: |
+      {
+        "error": "Unauthorized"
+      }

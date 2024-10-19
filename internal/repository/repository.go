@@ -25,7 +25,7 @@ type Repository interface {
 	GetUserByUserId(ctx context.Context, userId uuid.UUID) (db.User, error)
 	GetUserBySyncCode(ctx context.Context, syncCode string) (db.User, error)
 	GetDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) (db.Device, error)
-	RemoveDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) error
+	RemoveDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) (int, error)
 
 	// Inserts a new user and device with the given legacy values if not already exists.
 	// NOOP if already exists.

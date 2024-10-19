@@ -5,13 +5,15 @@ INSERT INTO devices (
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
--- name: DeleteDevice :exec
+-- name: DeleteDevice :many
 DELETE FROM devices
-WHERE user_db_id = $1 AND device_id = $2;
+WHERE user_db_id = $1 AND device_id = $2
+RETURNING device_id;
 
--- name: DeleteDeviceWithLegacyId :exec
+-- name: DeleteDeviceWithLegacyId :many
 DELETE FROM devices
-WHERE user_db_id = $1 AND legacy_device_id = $2;
+WHERE user_db_id = $1 AND legacy_device_id = $2
+RETURNING legacy_device_id;
 
 -- name: GetAllDevices :many
 SELECT * FROM devices;

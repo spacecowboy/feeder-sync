@@ -86,8 +86,7 @@ func AssertRegisteredDevice(repo repository.Repository) gin.HandlerFunc {
 		device, err := repo.GetDeviceWithLegacyId(c, user, legacyDeviceId)
 
 		if err != nil {
-			c.String(http.StatusUnauthorized, DEVICE_NOT_REGISTERED)
-			c.Abort()
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": DEVICE_NOT_REGISTERED, "value": legacyDeviceId})
 			return
 		}
 

@@ -68,12 +68,11 @@ func NewServerWithRepo(repo repository.Repository) (*FeederServer, error) {
 	}
 
 	// auth, userid, deviceid
-	// TODO middleware
 	fullyAuthed := router.Group("/api", assertBasicAuth, assertUser, assertDevice, updateLastSeen)
 	{
 		fullyAuthed.GET("v1/ereadmark", server.handleGETReadmarkV1)
 		fullyAuthed.POST("v1/ereadmark", server.handlePOSTReadmarkV1)
-		fullyAuthed.POST("v1/devices", server.handleDeviceGetV1)
+		fullyAuthed.GET("v1/devices", server.handleDeviceGetV1)
 		fullyAuthed.DELETE("v1/devices/:id", server.handleDeviceDeleteV1)
 		fullyAuthed.GET("v1/feeds", server.handleGETFeedsV1)
 		fullyAuthed.POST("v1/feeds", server.handlePOSTFeedsV1)
@@ -199,6 +198,11 @@ func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
 	user := c.MustGet("user").(db.User)
 
 	legacyDeviceIdString := c.Param("id")
+	if legacyDeviceIdString == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Bad Device ID"})
+		return
+	}
+
 	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
 	if err != nil {
 		log.Printf("Device Id was not a 64 bit number: %s", legacyDeviceIdString)
@@ -206,10 +210,14 @@ func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
 		return
 	}
 
-	err = s.repo.RemoveDeviceWithLegacyId(c, user, legacyDeviceId)
+	_, err = s.repo.RemoveDeviceWithLegacyId(c, user, legacyDeviceId)
 	if err != nil {
 		log.Printf("Failed to delete device %d: %s", legacyDeviceId, err.Error())
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
+		if err == repository.ErrNoSuchDevice {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "No such device"})
+		} else {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
+		}
 		return
 	}
 
@@ -279,7 +287,7 @@ func (s *FeederServer) handlePOSTFeedsV1(c *gin.Context) {
 			currentEtag = ""
 		} else {
 			log.Printf("PostLegacyFeeds error: %s", err.Error())
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad", "err": err.Error()})
 			return
 		}
 	} else {
@@ -294,8 +302,12 @@ func (s *FeederServer) handlePOSTFeedsV1(c *gin.Context) {
 
 	var feedsRequest UpdateFeedsRequestV1
 	if err := c.BindJSON(&feedsRequest); err != nil {
-		log.Println("Bad body")
-		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Bad body"})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	if feedsRequest.ContentHash == 0 || feedsRequest.Encrypted == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
 
@@ -372,6 +384,11 @@ func (s *FeederServer) handlePOSTReadmarkV1(c *gin.Context) {
 		return
 	}
 
+	if len(sendRequest.ReadMarks) == 0 {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "No readmarks"})
+		return
+	}
+
 	// TODO: Investigate COPY protocol
 	for _, readmark := range sendRequest.ReadMarks {
 		if _, err := s.repo.AddArticle(c, user, readmark.Encrypted); err != nil {
@@ -405,7 +422,7 @@ func (s *FeederServer) handleCreateV1(c *gin.Context) {
 
 	response := JoinChainResponseV1{
 		SyncCode: userDevice.User.LegacySyncCode,
-		DeviceId: userDevice.Device.DbID,
+		DeviceId: userDevice.Device.LegacyDeviceID,
 	}
 
 	c.JSON(http.StatusOK, response)
@@ -453,6 +470,11 @@ func (s *FeederServer) handleCreateV2(c *gin.Context) {
 		return
 	}
 
+	if createChainRequest.DeviceName == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing deviceName"})
+		return
+	}
+
 	userDevice, err := s.repo.RegisterNewUser(c, createChainRequest.DeviceName)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Badness"})
@@ -489,6 +511,11 @@ func (s *FeederServer) handleJoinV2(c *gin.Context) {
 
 	if err := c.BindJSON(&joinChainRequest); err != nil {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Bad body"})
+		return
+	}
+
+	if joinChainRequest.DeviceName == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing deviceName"})
 		return
 	}
 
