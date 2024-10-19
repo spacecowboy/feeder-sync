@@ -70,8 +70,6 @@
     status: 200
     headers:
       Content-Type: application/json; charset=utf-8
-    bodyType:
-      devices: array
     body: |
       {
         "devices": [
@@ -167,16 +165,8 @@
     headers:
       Content-Type: application/json; charset=utf-8
     bodyType:
-      readMarks: array
-    # "timestamp": 123456789,
-    body: |
-      {
-        "readMarks": [
-          {
-            "encrypted": "encrypted_readmark_content"
-          }
-        ]
-      }
+      "readMarks.0.encrypted": string
+      "readMarks.0.timestamp": int
 
 # JOIN a device
 - name: v1 JOIN a device
@@ -216,7 +206,8 @@
     headers:
       Content-Type: application/json; charset=utf-8
     bodyType:
-      devices: array
+      "devices.0.deviceId": int
+      "devices.0.deviceName": string
     body: |
       {
         "devices": [
