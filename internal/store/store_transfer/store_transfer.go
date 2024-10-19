@@ -1,25 +1,28 @@
 package store_transfer
 
 import (
-	"github.com/spacecowboy/feeder-sync/internal/store"
+	"errors"
+
+	"github.com/spacecowboy/feeder-sync/internal/repository"
 )
 
-func MoveBetweenStores(from_store store.DataStore, toStore store.DataStore) error {
-	if err := from_store.TransferUsersToStore(toStore); err != nil {
-		return err
-	}
+func MoveBetweenRepositories(from repository.Repository, to repository.Repository) error {
+	return errors.New("not implemented")
+	// if err := from.TransferUsersToStore(to); err != nil {
+	// 	return err
+	// }
 
-	if err := from_store.TransferDevicesToStore(toStore); err != nil {
-		return err
-	}
+	// if err := from.TransferDevicesToStore(to); err != nil {
+	// 	return err
+	// }
 
 	// if err := from_store.TransferArticlesToStore(toStore); err != nil {
 	// 	return err
 	// }
 
-	if err := from_store.TransferLegacyFeedsToStore(toStore); err != nil {
-		return err
-	}
+	// if err := from.TransferLegacyFeedsToStore(to); err != nil {
+	// 	return err
+	// }
 
-	return nil
+	// return nil
 }

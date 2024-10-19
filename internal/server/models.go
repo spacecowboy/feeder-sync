@@ -47,6 +47,7 @@ type GetFeedsResponseV1 struct {
 }
 
 type UpdateFeedsRequestV1 struct {
+	// Weird JSON. Needs changing in v2
 	ContentHash int64  `json:"contentHash"`
 	Encrypted   string `json:"encrypted"`
 }

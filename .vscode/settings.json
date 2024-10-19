@@ -1,5 +1,7 @@
 {
   "sqlfluff.excludeRules": [
     "L003"
-  ]
+  ],
+  "sqlfluff.dialect": "postgres",
+  "makefile.configureOnOpen": false
 }

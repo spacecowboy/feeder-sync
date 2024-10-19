@@ -1,0 +1,50 @@
+# all endpoints
+# apiKeyOnly.POST("v2/create", server.handleCreateV2)
+# apiKeyUserId.POST("v2/join", server.handleJoinV2)
+
+- name: v2 Create Happy Path
+  request:
+    method: POST
+    path: /api/v2/create
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+    body: |
+      {
+        "deviceName": "alice"
+      }
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    bodyType:
+      userId: string
+      deviceId: string
+      deviceName: string
+  extract:
+    body:
+      deviceId: deviceId
+      userId: userId
+
+# JOIN a device
+- name: v2 Join a device
+  request:
+    method: POST
+    path: /api/v2/join
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-USER-ID: "{{userId}}"
+    body: |
+      {
+        "userId": "{{userId}}",
+        "deviceName": "bob"
+      }
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    bodyType:
+      userId: string
+      deviceId: string
+      deviceName: string

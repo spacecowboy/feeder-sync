@@ -1,0 +1,37 @@
+- name: v1 Create Bad body
+  request:
+    method: POST
+    path: /api/v1/create
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+    body: |
+      {
+        "name": "test",
+        "age": 20
+      }
+  response:
+    status: 400
+    body: |
+      {
+        "error": "Missing deviceName"
+      }
+
+- name: v2 Create Bad body
+  request:
+    method: POST
+    path: /api/v2/create
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+    body: |
+      {
+        "name": "test",
+        "age": 20
+      }
+  response:
+    status: 400
+    body: |
+      {
+        "error": "Missing deviceName"
+      }

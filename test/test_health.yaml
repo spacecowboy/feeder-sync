@@ -1,0 +1,13 @@
+- name: Health Endpoint
+  request:
+    method: GET
+    path: /health
+  response:
+    status: 200
+
+- name: Ready Endpoint
+  request:
+    method: GET
+    path: /ready
+  response:
+    status: 200

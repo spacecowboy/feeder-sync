@@ -2,319 +2,120 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"path"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/felixge/httpsnoop"
-	"github.com/spacecowboy/feeder-sync/internal/store"
-	"github.com/spacecowboy/feeder-sync/internal/store/postgres"
-	"github.com/spacecowboy/feeder-sync/internal/store/sqlite"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/spacecowboy/feeder-sync/build/gen/db"
+	"github.com/spacecowboy/feeder-sync/internal/middleware"
+	"github.com/spacecowboy/feeder-sync/internal/repository"
 )
 
 type FeederServer struct {
-	store   store.DataStore
-	handler http.Handler
+	repo   repository.Repository
+	Router *gin.Engine
 }
 
-func NewServerWithSqlite() (*FeederServer, error) {
-	store, err := sqlite.New("./sqlite.db")
+func NewServerWithPostgres(connString string) (*FeederServer, error) {
+	ctx := context.Background()
+
+	conn, err := pgx.Connect(ctx, connString)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := store.RunMigrations("file://./migrations_sqlite"); err != nil {
-		return nil, err
-	}
+	repo := repository.NewPostgresRepository(conn)
 
-	return NewServerWithStore(&store)
+	return NewServerWithRepo(repo)
 }
 
-func NewServerWithPostgres(conn string) (*FeederServer, error) {
-	store, err := postgres.New(conn)
-	if err != nil {
-		return nil, err
-	}
+func NewServerWithRepo(repo repository.Repository) (*FeederServer, error) {
+	router := gin.Default()
 
-	if err := store.RunMigrations("file://./migrations_postgres"); err != nil {
-		return nil, err
-	}
-
-	return NewServerWithStore(&store)
-}
-
-func NewServerWithStore(dataStore store.DataStore) (*FeederServer, error) {
 	server := FeederServer{
-		store: dataStore,
+		repo:   repo,
+		Router: router,
 	}
 
-	router := http.NewServeMux()
+	// Middleware
+	assertBasicAuth := middleware.AssertBasicAuth()
+	assertUser := middleware.AssertRegisteredUser(repo)
+	assertDevice := middleware.AssertRegisteredDevice(repo)
+	updateLastSeen := middleware.UpdateLastSeenForDevice(repo)
 
-	router.Handle("/health", http.HandlerFunc(server.handleHealth))
-	router.Handle("/ready", http.HandlerFunc(server.handleReady))
+	// These have no middleware
+	router.GET("/health", server.handleHealth)
+	router.GET("/ready", server.handleReady)
 
-	router.Handle("/api/v2/migrate", http.HandlerFunc(server.handleMigrateV2))
-	router.Handle("/api/v1/create", http.HandlerFunc(server.handleCreateV1))
-	router.Handle("/api/v2/create", http.HandlerFunc(server.handleCreateV2))
-	router.Handle("/api/v1/join", http.HandlerFunc(server.handleJoinV1))
-	router.Handle("/api/v2/join", http.HandlerFunc(server.handleJoinV2))
-	router.Handle("/api/v1/ereadmark", http.HandlerFunc(server.handleReadmarkV1))
-	router.Handle("/api/v1/devices", http.HandlerFunc(server.handleDeviceGetV1))
-	// Ending slash is like a wildcard
-	router.Handle("/api/v1/devices/", http.HandlerFunc(server.handleDeviceDeleteV1))
-	router.Handle("/api/v1/feeds", http.HandlerFunc(server.handleFeedsV1))
+	// Create only checks auth
+	apiKeyOnly := router.Group("/api", assertBasicAuth)
+	{
+		apiKeyOnly.POST("v1/create", server.handleCreateV1)
+		apiKeyOnly.POST("v2/create", server.handleCreateV2)
+	}
 
-	wrappedRouter := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		m := httpsnoop.CaptureMetrics(router, w, r)
-		log.Printf(
-			"%s %s (code=%d dt=%s written=%d)",
-			r.Method,
-			r.URL,
-			m.Code,
-			m.Duration,
-			m.Written,
-		)
-	},
-	)
+	// auth and UserID
+	apiKeyUserId := router.Group("/api", assertBasicAuth, assertUser)
+	{
+		apiKeyUserId.POST("v1/join", server.handleJoinV1)
+		apiKeyUserId.POST("v2/join", server.handleJoinV2)
+	}
 
-	server.handler = wrappedRouter
+	// auth, userid, deviceid
+	fullyAuthed := router.Group("/api", assertBasicAuth, assertUser, assertDevice, updateLastSeen)
+	{
+		fullyAuthed.GET("v1/ereadmark", server.handleGETReadmarkV1)
+		fullyAuthed.POST("v1/ereadmark", server.handlePOSTReadmarkV1)
+		fullyAuthed.GET("v1/devices", server.handleDeviceGetV1)
+		fullyAuthed.DELETE("v1/devices/:id", server.handleDeviceDeleteV1)
+		fullyAuthed.GET("v1/feeds", server.handleGETFeedsV1)
+		fullyAuthed.POST("v1/feeds", server.handlePOSTFeedsV1)
+	}
 
 	return &server, nil
 }
 
 func (s *FeederServer) Close() error {
-	return s.store.Close()
+	return s.repo.Close(context.Background())
 }
 
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.handler.ServeHTTP(w, r)
+	s.Router.ServeHTTP(w, r)
 }
 
-func (s *FeederServer) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if s.handler != nil && s.store != nil {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+func (s *FeederServer) handleHealth(c *gin.Context) {
+	if s.Router != nil && s.repo != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"status": "Initialized",
+		})
 	} else {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Server is not initialized"))
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status": "Server is not initialized",
+		})
 	}
 }
 
-func (s *FeederServer) handleReady(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+func (s *FeederServer) handleReady(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c, 5*time.Second)
 	defer cancel()
 	// Check if the database connection is alive
-	if err := s.store.PingContext(ctx); err != nil {
+	if err := s.repo.PingContext(ctx); err != nil {
 		log.Printf("Database connection is not ready: %s", err.Error())
-		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte("Database connection is not ready"))
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+			"status": "Database connection is not ready",
+		})
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Ready"))
-}
-
-func (s *FeederServer) handleDeviceGetV1(w http.ResponseWriter, r *http.Request) {
-	if !s.ensureBasicAuthOrError(w, r) {
-		return
-	}
-
-	if r.Method != "GET" {
-		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
-		return
-	}
-
-	syncCode := r.Header.Get("X-FEEDER-ID")
-	if syncCode == "" {
-		log.Println("No sync code in header")
-		http.Error(w, "Missing ID", http.StatusBadRequest)
-		return
-	}
-
-	legacyDeviceIdString := r.Header.Get("X-FEEDER-DEVICE-ID")
-	if legacyDeviceIdString == "" {
-		log.Println("No device id in header")
-		http.Error(w, "Missing Device ID", http.StatusBadRequest)
-		return
-	}
-	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
-	if err != nil {
-		log.Printf("Device Id was not a 64 bit number: %s", legacyDeviceIdString)
-		http.Error(w, "Bad Device ID", http.StatusBadRequest)
-		return
-	}
-
-	etag, err := s.store.GetLegacyDevicesEtag(syncCode)
-	if err != nil {
-		if err == store.ErrNoSuchDevice {
-			http.Error(w, DEVICE_NOT_REGISTERED, http.StatusBadRequest)
-			return
-		} else {
-			log.Printf("GetLegacyDevicesEtag error: %s", err.Error())
-			http.Error(w, "Something bad", http.StatusInternalServerError)
-			return
-		}
-	}
-	requestEtag := r.Header.Get("If-None-Match")
-	if matchesEtag(requestEtag, etag) {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-
-	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
-	if err != nil {
-		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
-		if err == store.ErrNoSuchDevice {
-			// Used by clients
-			http.Error(w, DEVICE_NOT_REGISTERED, http.StatusBadRequest)
-			return
-		}
-		http.Error(w, "Could not fetch device", http.StatusBadRequest)
-		return
-	}
-
-	_, err = s.store.UpdateLastSeenForDevice(userDevice)
-	if err != nil {
-		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
-		http.Error(w, "Something bad happened", http.StatusInternalServerError)
-		return
-	}
-
-	devices, err := s.store.GetDevices(userDevice.UserId)
-	if err != nil {
-		log.Printf("Failed to fetch devices for user %s: %s", userDevice.UserId, err.Error())
-		http.Error(w, "Something bad happened", http.StatusInternalServerError)
-		return
-	}
-
-	response := DeviceListResponseV1{
-		Devices: make([]DeviceMessageV1, 0, len(devices)),
-	}
-
-	for _, device := range devices {
-		response.Devices = append(
-			response.Devices,
-			DeviceMessageV1{
-				DeviceId:   device.LegacyDeviceId,
-				DeviceName: device.DeviceName,
-			},
-		)
-	}
-
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Could not encode devices: %s", err.Error())
-		http.Error(w, "Could not encode response", http.StatusInternalServerError)
-		return
-	}
-
-	if etag != "" {
-		w.Header().Add("Cache-Control", "private, must-revalidate")
-		w.Header().Add("ETag", etag)
-	}
-}
-
-func (s *FeederServer) handleDeviceDeleteV1(w http.ResponseWriter, r *http.Request) {
-	if !s.ensureBasicAuthOrError(w, r) {
-		return
-	}
-
-	if r.Method != "DELETE" {
-		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if path.Dir(r.URL.Path) != "/api/v1/devices" {
-		http.Error(w, "No no", http.StatusNotFound)
-		return
-	}
-
-	syncCode := r.Header.Get("X-FEEDER-ID")
-	if syncCode == "" {
-		log.Println("No sync code in header")
-		http.Error(w, "Missing ID", http.StatusBadRequest)
-		return
-	}
-
-	legacyDeviceIdString := r.Header.Get("X-FEEDER-DEVICE-ID")
-	if legacyDeviceIdString == "" {
-		log.Println("No device id in header")
-		http.Error(w, "Missing Device ID", http.StatusBadRequest)
-		return
-	}
-	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
-	if err != nil {
-		log.Printf("Device Id was not a 64 bit number: %s", legacyDeviceIdString)
-		http.Error(w, "Bad Device ID", http.StatusBadRequest)
-		return
-	}
-
-	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
-	if err != nil {
-		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
-		if err == store.ErrNoSuchDevice {
-			// Used by clients
-			http.Error(w, DEVICE_NOT_REGISTERED, http.StatusBadRequest)
-			return
-		}
-		http.Error(w, "Could not fetch device", http.StatusBadRequest)
-		return
-	}
-
-	_, err = s.store.UpdateLastSeenForDevice(userDevice)
-	if err != nil {
-		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
-		http.Error(w, "Something bad happened", http.StatusInternalServerError)
-		return
-	}
-
-	targetLegacyDeviceIdString := path.Base(r.URL.Path)
-	targetLegacyDeviceId, err := strconv.ParseInt(targetLegacyDeviceIdString, 10, 64)
-	if err != nil {
-		log.Printf("Device Id was not a 64 bit number: %s", legacyDeviceIdString)
-		http.Error(w, "Bad Device ID", http.StatusBadRequest)
-		return
-	}
-
-	_, err = s.store.RemoveDeviceWithLegacy(userDevice.UserDbId, targetLegacyDeviceId)
-	if err != nil {
-		log.Printf("Failed to delete device %d for device %s: %s", targetLegacyDeviceId, userDevice.DeviceId, err.Error())
-		http.Error(w, "Something bad happened", http.StatusInternalServerError)
-		return
-	}
-
-	devices, err := s.store.GetDevices(userDevice.UserId)
-	if err != nil {
-		log.Printf("Failed to fetch devices for user %s: %s", userDevice.UserId, err.Error())
-		http.Error(w, "Something bad happened", http.StatusInternalServerError)
-		return
-	}
-
-	response := DeviceListResponseV1{
-		Devices: make([]DeviceMessageV1, len(devices)),
-	}
-
-	for _, device := range devices {
-		response.Devices = append(
-			response.Devices,
-			DeviceMessageV1{
-				DeviceId:   device.LegacyDeviceId,
-				DeviceName: device.DeviceName,
-			},
-		)
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Could not encode devices: %s", err.Error())
-		http.Error(w, "Could not encode response", http.StatusInternalServerError)
-		return
-	}
+	c.JSON(http.StatusOK, gin.H{
+		"status": "Ready",
+	})
 }
 
 func matchesEtag(requestEtag string, etagValue string) bool {
@@ -331,93 +132,123 @@ func matchesEtag(requestEtag string, etagValue string) bool {
 	return requestEtag == etagValueNoPrefix
 }
 
-func (s *FeederServer) handleFeedsV1(w http.ResponseWriter, r *http.Request) {
-	if !s.ensureBasicAuthOrError(w, r) {
+func etagValueForInt64(data int64) string {
+	return fmt.Sprintf("W/\"%d\"", data)
+}
+
+func (s *FeederServer) handleDeviceGetV1(c *gin.Context) {
+	user := c.MustGet("user").(db.User)
+
+	etag, err := s.repo.GetDevicesEtag(c, user)
+	if err != nil {
+		log.Printf("GetLegacyDevicesEtag error: %s", err.Error())
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
 		return
 	}
 
-	if r.Method != "GET" && r.Method != "POST" {
-		log.Printf("Unsupported method: %s", r.Method)
-		http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
+	requestEtag := c.GetHeader("If-None-Match")
+	if matchesEtag(requestEtag, etag) {
+		c.Status(http.StatusNotModified)
 		return
 	}
 
-	syncCode := r.Header.Get("X-FEEDER-ID")
-	if syncCode == "" {
-		log.Println("No sync code in header")
-		http.Error(w, "Missing ID", http.StatusBadRequest)
+	devices, err := s.repo.GetDevices(c, user)
+	if err != nil {
+		log.Printf("Failed to fetch devices for user %s: %s", user.UserID, err.Error())
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
 		return
 	}
 
-	legacyDeviceIdString := r.Header.Get("X-FEEDER-DEVICE-ID")
+	response := DeviceListResponseV1{
+		Devices: make([]DeviceMessageV1, 0, len(devices)),
+	}
+
+	for _, device := range devices {
+		response.Devices = append(
+			response.Devices,
+			DeviceMessageV1{
+				DeviceId:   device.LegacyDeviceID,
+				DeviceName: device.DeviceName,
+			},
+		)
+	}
+
+	c.Header("Cache-Control", "private, must-revalidate")
+	log.Printf("Setting ETag: %s", etag)
+	c.Header("ETag", etag)
+	c.JSON(http.StatusOK, response)
+}
+
+func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
+	user := c.MustGet("user").(db.User)
+
+	legacyDeviceIdString := c.Param("id")
 	if legacyDeviceIdString == "" {
-		log.Println("No device id in header")
-		http.Error(w, "Missing Device ID", http.StatusBadRequest)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Bad Device ID"})
 		return
 	}
+
 	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
 	if err != nil {
 		log.Printf("Device Id was not a 64 bit number: %s", legacyDeviceIdString)
-		http.Error(w, "Bad Device ID", http.StatusBadRequest)
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Bad Device ID"})
 		return
 	}
 
-	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
+	_, err = s.repo.RemoveDeviceWithLegacyId(c, user, legacyDeviceId)
 	if err != nil {
-		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
-		if err == store.ErrNoSuchDevice {
-			// Used by clients
-			http.Error(w, DEVICE_NOT_REGISTERED, http.StatusBadRequest)
-			return
+		log.Printf("Failed to delete device %d: %s", legacyDeviceId, err.Error())
+		if err == repository.ErrNoSuchDevice {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "No such device"})
+		} else {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
 		}
-		http.Error(w, "Could not fetch device", http.StatusBadRequest)
 		return
 	}
 
-	_, err = s.store.UpdateLastSeenForDevice(userDevice)
+	devices, err := s.repo.GetDevices(c, user)
 	if err != nil {
-		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
-		http.Error(w, "Something bad happened", http.StatusInternalServerError)
+		log.Printf("Failed to fetch devices for user %s: %s", user.UserID, err.Error())
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
 		return
 	}
 
-	switch r.Method {
-	case "GET":
-		s.handleGetFeedsV1(userDevice, w, r)
-	case "POST":
-		s.handlePostFeedsV1(userDevice, w, r)
+	response := DeviceListResponseV1{
+		Devices: make([]DeviceMessageV1, 0, len(devices)),
 	}
+
+	for _, device := range devices {
+		response.Devices = append(
+			response.Devices,
+			DeviceMessageV1{
+				DeviceId:   device.LegacyDeviceID,
+				DeviceName: device.DeviceName,
+			},
+		)
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
-func (s *FeederServer) handleGetFeedsV1(userDevice store.UserDevice, w http.ResponseWriter, r *http.Request) {
-	feedsEtag, err := s.store.GetLegacyFeedsEtag(userDevice.UserId)
+func (s *FeederServer) handleGETFeedsV1(c *gin.Context) {
+	user := c.MustGet("user").(db.User)
+
+	feeds, err := s.repo.GetLegacyFeeds(c, user)
 	if err != nil {
-		if err == store.ErrNoFeeds {
-			w.WriteHeader(http.StatusNoContent)
+		if err == repository.ErrNoFeeds {
+			c.Status(http.StatusNoContent)
 			return
 		} else {
 			log.Printf("GetLegacyFeeds error: %s", err.Error())
-			http.Error(w, "Something bad", http.StatusInternalServerError)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
 			return
 		}
 	}
 
-	requestEtag := r.Header.Get("If-None-Match")
-	if matchesEtag(requestEtag, feedsEtag) {
-		w.WriteHeader(http.StatusNotModified)
+	requestEtag := c.GetHeader("If-None-Match")
+	if matchesEtag(requestEtag, feeds.Etag) {
+		c.Status(http.StatusNotModified)
 		return
-	}
-
-	feeds, err := s.store.GetLegacyFeeds(userDevice.UserId)
-	if err != nil {
-		if err == store.ErrNoFeeds {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		} else {
-			log.Printf("GetLegacyFeeds error: %s", err.Error())
-			http.Error(w, "Something bad", http.StatusInternalServerError)
-			return
-		}
 	}
 
 	response := GetFeedsResponseV1{
@@ -425,54 +256,46 @@ func (s *FeederServer) handleGetFeedsV1(userDevice store.UserDevice, w http.Resp
 		Encrypted:   feeds.Content,
 	}
 
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Could not encode feeds: %s", err.Error())
-		http.Error(w, "Could not encode response", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Add("Cache-Control", "private, must-revalidate")
-	w.Header().Add("ETag", feeds.Etag)
+	c.JSON(http.StatusOK, response)
+	c.Header("Cache-Control", "private, must-revalidate")
+	c.Header("ETag", feeds.Etag)
 }
 
-func (s *FeederServer) handlePostFeedsV1(userDevice store.UserDevice, w http.ResponseWriter, r *http.Request) {
-	var currentEtag string
-	feeds, err := s.store.GetLegacyFeeds(userDevice.UserId)
-	if err != nil {
-		if err == store.ErrNoFeeds {
-			currentEtag = ""
-		} else {
-			log.Printf("PostLegacyFeeds error: %s", err.Error())
-			http.Error(w, "Something bad", http.StatusInternalServerError)
-			return
-		}
-	} else {
-		currentEtag = feeds.Etag
-	}
+func (s *FeederServer) handlePOSTFeedsV1(c *gin.Context) {
+	user := c.MustGet("user").(db.User)
 
-	requestEtag := r.Header.Get("If-Match")
-	if !matchesEtag(requestEtag, currentEtag) {
-		w.WriteHeader(http.StatusPreconditionFailed)
+	var currentEtag string
+
+	feeds, err := s.repo.GetLegacyFeeds(c, user)
+	if err != nil && err != repository.ErrNoFeeds {
+		log.Printf("PostLegacyFeeds error: %s", err.Error())
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad", "err": err.Error()})
 		return
 	}
 
-	if r.Body == nil {
-		log.Println("No body")
-		http.Error(w, "No body", http.StatusBadRequest)
+	currentEtag = feeds.Etag
+
+	requestEtag := c.GetHeader("If-Match")
+	if !matchesEtag(requestEtag, currentEtag) {
+		log.Printf("Etag mismatch: [%s] != [%s]", requestEtag, currentEtag)
+		c.AbortWithStatus(http.StatusPreconditionFailed)
 		return
 	}
 
 	var feedsRequest UpdateFeedsRequestV1
-
-	if err := json.NewDecoder(r.Body).Decode(&feedsRequest); err != nil {
-		log.Println("Bad body")
-		http.Error(w, "Bad body", http.StatusBadRequest)
+	if err := c.BindJSON(&feedsRequest); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
 		return
 	}
 
-	_, err = s.store.UpdateLegacyFeeds(
-		userDevice.UserDbId,
+	if feedsRequest.ContentHash == 0 || feedsRequest.Encrypted == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	_, err = s.repo.UpdateLegacyFeeds(
+		c,
+		user,
 		feedsRequest.ContentHash,
 		feedsRequest.Encrypted,
 		etagValueForInt64(feedsRequest.ContentHash),
@@ -480,7 +303,7 @@ func (s *FeederServer) handlePostFeedsV1(userDevice store.UserDevice, w http.Res
 
 	if err != nil {
 		log.Printf("Update feeds failed: %s", err.Error())
-		http.Error(w, "Something bad", http.StatusInternalServerError)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
 		return
 	}
 
@@ -488,328 +311,231 @@ func (s *FeederServer) handlePostFeedsV1(userDevice store.UserDevice, w http.Res
 		ContentHash: feedsRequest.ContentHash,
 	}
 
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Could not encode feeds: %s", err.Error())
-		http.Error(w, "Could not encode response", http.StatusInternalServerError)
-		return
-	}
+	c.JSON(http.StatusOK, response)
 }
 
-func etagValueForInt64(data int64) string {
-	return fmt.Sprintf("W/\"%d\"", data)
-}
+func (s *FeederServer) handleGETReadmarkV1(c *gin.Context) {
+	user := c.MustGet("user").(db.User)
 
-func (s *FeederServer) handleReadmarkV1(w http.ResponseWriter, r *http.Request) {
-	if !s.ensureBasicAuthOrError(w, r) {
-		return
-	}
-
-	syncCode := r.Header.Get("X-FEEDER-ID")
-	if syncCode == "" {
-		log.Println("No sync code in header")
-		http.Error(w, "Missing ID", http.StatusBadRequest)
-		return
-	}
-
-	legacyDeviceIdString := r.Header.Get("X-FEEDER-DEVICE-ID")
-	if legacyDeviceIdString == "" {
-		log.Println("No device id in header")
-		http.Error(w, "Missing Device ID", http.StatusBadRequest)
-		return
-	}
-	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
-	if err != nil {
-		log.Printf("Device Id was not a 64 bit number: %s", legacyDeviceIdString)
-		http.Error(w, "Bad Device ID", http.StatusBadRequest)
-		return
-	}
-
-	userDevice, err := s.store.GetLegacyDevice(syncCode, legacyDeviceId)
-	if err != nil {
-		if err == store.ErrNoSuchDevice {
-			// Used by clients
-			http.Error(w, DEVICE_NOT_REGISTERED, http.StatusBadRequest)
-			return
-		}
-		log.Printf("Could not find userdevice %d: %s", legacyDeviceId, err.Error())
-		http.Error(w, "Could not fetch device", http.StatusBadRequest)
-		return
-	}
-
-	_, err = s.store.UpdateLastSeenForDevice(userDevice)
-	if err != nil {
-		log.Printf("Failed to update last seen for device %s: %s", userDevice.DeviceId, err.Error())
-		http.Error(w, "Something bad happened", http.StatusInternalServerError)
-		return
-	}
-
-	switch r.Method {
-	case "GET":
-		response := GetReadmarksResponseV1{
-			ReadMarks: make([]ReadMarkV1, 0, 1),
-		}
-
-		sinceRaw := r.URL.Query().Get("since")
-		// milliseconds
-		var since int64 = 0
-		if sinceRaw != "" {
-			since, err = strconv.ParseInt(sinceRaw, 10, 64)
-
-			if err != nil {
-				http.Error(w, "Invalid value for since-queryParam", http.StatusBadRequest)
-				return
-			}
-		}
-
-		articles, err := s.store.GetArticles(userDevice.UserId, since)
+	sinceRaw := c.Query("since")
+	// milliseconds
+	var since int64 = 0
+	var err error
+	if sinceRaw != "" {
+		since, err = strconv.ParseInt(sinceRaw, 10, 64)
 
 		if err != nil {
-			log.Printf("Could not fetch articles: %s", err.Error())
-			http.Error(w, "Could not fetch articles", http.StatusInternalServerError)
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid value for since-queryParam"})
 			return
 		}
-
-		for _, article := range articles {
-			response.ReadMarks = append(
-				response.ReadMarks,
-				ReadMarkV1{
-					Encrypted: article.Identifier,
-					Timestamp: article.ReadTime,
-				},
-			)
-		}
-
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			log.Printf("Could not encode articles: %s", err.Error())
-			http.Error(w, "Could not encode response", http.StatusInternalServerError)
-			return
-		}
-
-	case "POST":
-		if r.Body == nil {
-			log.Println("No body")
-			http.Error(w, "No body", http.StatusBadRequest)
-			return
-		}
-
-		var sendRequest SendReadMarksRequestV1
-
-		if err := json.NewDecoder(r.Body).Decode(&sendRequest); err != nil {
-			log.Println("Bad body")
-			http.Error(w, "Bad body", http.StatusBadRequest)
-			return
-		}
-
-		for _, readmark := range sendRequest.ReadMarks {
-			if err := s.store.AddLegacyArticle(userDevice.UserDbId, readmark.Encrypted); err != nil {
-				log.Printf("Failed to add article: %v", err.Error())
-				http.Error(w, "Failed to store article", http.StatusInternalServerError)
-				return
-			}
-		}
-
-		w.WriteHeader(http.StatusNoContent)
-
-	default:
-		http.Error(w, "Method not supported", http.StatusBadRequest)
-		return
-	}
-}
-
-func (s *FeederServer) handleMigrateV2(w http.ResponseWriter, r *http.Request) {
-	// Migration is only accepted from the old sync server
-	cfWorker := r.Header["Cf-Worker"]
-	if cfWorker == nil || len(cfWorker) == 0 || cfWorker[0] != "nononsenseapps.com" {
-		http.Error(w, "You bad bad man. Go way.", http.StatusBadRequest)
-		return
 	}
 
-	if r.Body == nil {
-		http.Error(w, "No body", http.StatusBadRequest)
-		return
-	}
+	articles, err := s.repo.GetArticlesUpdatedSince(c, user, since)
 
-	var migrateRequest MigrateRequestV2
-
-	if err := json.NewDecoder(r.Body).Decode(&migrateRequest); err != nil {
-		http.Error(w, "Bad body", http.StatusBadRequest)
-		return
-	}
-
-	_, err := s.store.EnsureMigration(migrateRequest.SyncCode, migrateRequest.DeviceId, migrateRequest.DeviceName)
 	if err != nil {
-		http.Error(w, "Badness", http.StatusInternalServerError)
-		return
+		if err == repository.ErrNoReadMarks {
+			c.Status(http.StatusNoContent)
+			return
+		} else {
+			log.Printf("Could not fetch articles: %s", err.Error())
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Could not fetch articles"})
+			return
+		}
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	response := GetReadmarksResponseV1{
+		ReadMarks: make([]ReadMarkV1, 0, len(articles)),
+	}
+
+	for _, article := range articles {
+		response.ReadMarks = append(
+			response.ReadMarks,
+			ReadMarkV1{
+				Encrypted: article.Identifier,
+				Timestamp: article.ReadTime.Time.UnixMilli(),
+			},
+		)
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
-func (s *FeederServer) ensureBasicAuthOrError(w http.ResponseWriter, r *http.Request) bool {
-	username, password, ok := r.BasicAuth()
-	if !ok {
-		http.Error(w, "Missing auth", http.StatusUnauthorized)
-		return false
+func (s *FeederServer) handlePOSTReadmarkV1(c *gin.Context) {
+	user := c.MustGet("user").(db.User)
+
+	var sendRequest SendReadMarksRequestV1
+
+	if err := c.BindJSON(&sendRequest); err != nil {
+		log.Println("Bad body")
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Bad body"})
+		return
 	}
 
-	if username != HARDCODED_USER || password != HARDCODED_PASSWORD {
-		http.Error(w, "Bad auth", http.StatusUnauthorized)
-		return false
+	if len(sendRequest.ReadMarks) == 0 {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "No readmarks"})
+		return
 	}
 
-	return true
+	// TODO: Investigate COPY protocol
+	for _, readmark := range sendRequest.ReadMarks {
+		if _, err := s.repo.AddArticle(c, user, readmark.Encrypted); err != nil {
+			log.Printf("Failed to add article: %v", err.Error())
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to store article"})
+			return
+		}
+	}
+
+	c.Status(http.StatusNoContent)
 }
 
-func (s *FeederServer) handleCreateV1(w http.ResponseWriter, r *http.Request) {
-	if !s.ensureBasicAuthOrError(w, r) {
-		return
-	}
-
-	if r.Body == nil {
-		http.Error(w, "No body", http.StatusBadRequest)
-		return
-	}
-
+func (s *FeederServer) handleCreateV1(c *gin.Context) {
 	var createChainRequest CreateChainRequestV1
 
-	if err := json.NewDecoder(r.Body).Decode(&createChainRequest); err != nil {
-		http.Error(w, "Bad body", http.StatusBadRequest)
+	if err := c.BindJSON(&createChainRequest); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Bad body"})
 		return
 	}
 
-	userDevice, err := s.store.RegisterNewUser(createChainRequest.DeviceName)
+	if createChainRequest.DeviceName == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing deviceName"})
+		return
+	}
+
+	userDevice, err := s.repo.RegisterNewUser(c, createChainRequest.DeviceName)
 	if err != nil {
-		http.Error(w, "Badness", http.StatusInternalServerError)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Badness"})
 		return
 	}
 
 	response := JoinChainResponseV1{
-		SyncCode: userDevice.LegacySyncCode,
-		DeviceId: userDevice.LegacyDeviceId,
+		SyncCode: userDevice.User.LegacySyncCode,
+		DeviceId: userDevice.Device.LegacyDeviceID,
 	}
 
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "Could not encode JoinChainResponseV1", http.StatusInternalServerError)
-		return
-	}
+	c.JSON(http.StatusOK, response)
 }
 
-func (s *FeederServer) handleCreateV2(w http.ResponseWriter, r *http.Request) {
-	if !s.ensureBasicAuthOrError(w, r) {
-		return
-	}
-
-	if r.Body == nil {
-		http.Error(w, "No body", http.StatusBadRequest)
-		return
-	}
-
-	var createChainRequest CreateChainRequestV2
-
-	if err := json.NewDecoder(r.Body).Decode(&createChainRequest); err != nil {
-		http.Error(w, "Bad body", http.StatusBadRequest)
-		return
-	}
-
-	userDevice, err := s.store.RegisterNewUser(createChainRequest.DeviceName)
-	if err != nil {
-		http.Error(w, "Badness", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(userDevice); err != nil {
-		http.Error(w, "Could not encode UserDevice", http.StatusInternalServerError)
-		return
-	}
-}
-
-func (s *FeederServer) handleJoinV1(w http.ResponseWriter, r *http.Request) {
-	if !s.ensureBasicAuthOrError(w, r) {
-		return
-	}
-
-	if r.Body == nil {
-		http.Error(w, "No body", http.StatusBadRequest)
-		return
-	}
-
-	syncCode := r.Header.Get("X-FEEDER-ID")
-	if syncCode == "" {
-		http.Error(w, "Missing ID", http.StatusBadRequest)
-	}
+func (s *FeederServer) handleJoinV1(c *gin.Context) {
+	user := c.MustGet("user").(db.User)
 
 	var joinChainRequest JoinChainRequestV1
 
-	if err := json.NewDecoder(r.Body).Decode(&joinChainRequest); err != nil {
-		http.Error(w, "Bad body", http.StatusBadRequest)
+	if err := c.BindJSON(&joinChainRequest); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Bad body"})
 		return
 	}
 
-	userDevice, err := s.store.AddDeviceToChainWithLegacy(syncCode, joinChainRequest.DeviceName)
+	if joinChainRequest.DeviceName == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing deviceName"})
+		return
+	}
+
+	device, err := s.repo.AddDeviceToUser(c, user, joinChainRequest.DeviceName)
 	if err != nil {
 		switch err.Error() {
 		case "user not found":
-			http.Error(w, "user not found", http.StatusNotFound)
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		default:
-			http.Error(w, "Badness", http.StatusInternalServerError)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Badness"})
 		}
 		return
 	}
 
 	response := JoinChainResponseV1{
-		SyncCode: userDevice.LegacySyncCode,
-		DeviceId: userDevice.LegacyDeviceId,
+		SyncCode: user.LegacySyncCode,
+		DeviceId: device.LegacyDeviceID,
 	}
 
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "Could not encode JoinChainResponseV1", http.StatusInternalServerError)
-		return
-	}
+	c.JSON(http.StatusOK, response)
 }
 
-func (s *FeederServer) handleJoinV2(w http.ResponseWriter, r *http.Request) {
-	if !s.ensureBasicAuthOrError(w, r) {
+func (s *FeederServer) handleCreateV2(c *gin.Context) {
+	var createChainRequest CreateChainRequestV2
+
+	if err := c.BindJSON(&createChainRequest); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Bad body"})
 		return
 	}
 
-	if r.Body == nil {
-		http.Error(w, "No body", http.StatusBadRequest)
+	if createChainRequest.DeviceName == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing deviceName"})
 		return
 	}
+
+	userDevice, err := s.repo.RegisterNewUser(c, createChainRequest.DeviceName)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Badness"})
+		return
+	}
+
+	userId, err := uuid.Parse(userDevice.User.UserID)
+	if err != nil {
+		log.Printf("Could not parse UUID: %s", userDevice.User.UserID)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Badness"})
+		return
+	}
+
+	deviceId, err := uuid.Parse(userDevice.Device.DeviceID)
+	if err != nil {
+		log.Printf("Could not parse UUID: %s", userDevice.Device.DeviceID)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Badness"})
+		return
+	}
+
+	response := UserDeviceResponseV2{
+		UserId:     userId,
+		DeviceId:   deviceId,
+		DeviceName: userDevice.Device.DeviceName,
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+func (s *FeederServer) handleJoinV2(c *gin.Context) {
+	user := c.MustGet("user").(db.User)
 
 	var joinChainRequest JoinChainRequestV2
 
-	if err := json.NewDecoder(r.Body).Decode(&joinChainRequest); err != nil {
-		http.Error(w, "Bad body", http.StatusBadRequest)
+	if err := c.BindJSON(&joinChainRequest); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Bad body"})
 		return
 	}
 
-	userDevice, err := s.store.AddDeviceToChain(joinChainRequest.UserId, joinChainRequest.DeviceName)
+	if joinChainRequest.DeviceName == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing deviceName"})
+		return
+	}
+
+	device, err := s.repo.AddDeviceToUser(c, user, joinChainRequest.DeviceName)
 	if err != nil {
 		switch err.Error() {
 		case "No such user":
-			http.Error(w, "No such chain", http.StatusNotFound)
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "No such user"})
 		default:
-			http.Error(w, "Badness", http.StatusInternalServerError)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Badness"})
 		}
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if err := json.NewEncoder(w).Encode(userDevice); err != nil {
-		http.Error(w, "Could not encode UserDevice", http.StatusInternalServerError)
+	userId, err := uuid.Parse(user.UserID)
+	if err != nil {
+		log.Printf("Could not parse UUID: %s", user.UserID)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Badness"})
 		return
 	}
+
+	deviceId, err := uuid.Parse(device.DeviceID)
+	if err != nil {
+		log.Printf("Could not parse UUID: %s", device.DeviceID)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Badness"})
+		return
+	}
+
+	response := UserDeviceResponseV2{
+		UserId:     userId,
+		DeviceId:   deviceId,
+		DeviceName: device.DeviceName,
+	}
+
+	c.JSON(http.StatusOK, response)
 }
-
-// Used by clients
-var DEVICE_NOT_REGISTERED = "Device not registered"
-
-// Used internally
-var HARDCODED_USER = "feeder_user"
-var HARDCODED_PASSWORD = "feeder_secret_1234"

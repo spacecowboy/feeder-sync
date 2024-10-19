@@ -1,0 +1,314 @@
+# all endpoints
+# apiKeyOnly.POST("v1/create", server.handleCreateV1)
+# apiKeyOnly.POST("v2/create", server.handleCreateV2)
+# apiKeyUserId.POST("v1/join", server.handleJoinV1)
+# apiKeyUserId.POST("v2/join", server.handleJoinV2)
+# fullyAuthed.GET("v1/ereadmark", server.handleGETReadmarkV1)
+# fullyAuthed.POST("v1/ereadmark", server.handlePOSTReadmarkV1)
+# fullyAuthed.POST("v1/devices", server.handleDeviceGetV1)
+# fullyAuthed.DELETE("v1/devices/:id", server.handleDeviceDeleteV1)
+# fullyAuthed.GET("v1/feeds", server.handleGETFeedsV1)
+# fullyAuthed.POST("v1/feeds", server.handlePOSTFeedsV1)
+
+- name: v1 Create Happy Path
+  request:
+    method: POST
+    path: /api/v1/create
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+    body: |
+      {
+        "deviceName": "alice"
+      }
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    bodyType:
+      deviceId: int
+      syncCode: string
+  extract:
+    body:
+      deviceId: deviceId
+      syncCode: syncCode
+
+# Test GET everything before there are feeds or readmarks
+- name: v1 Get Feeds Empty
+  request:
+    method: GET
+    path: /api/v1/feeds
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+  response:
+    status: 204
+
+- name: v1 Get Readmarks Empty
+  request:
+    method: GET
+    path: /api/v1/ereadmark
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+  response:
+    status: 204
+
+- name: v1 Get Devices Initial
+  request:
+    method: GET
+    path: /api/v1/devices
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+      Cache-Control: private, must-revalidate
+    body: |
+      {
+        "devices": [
+          {
+            "deviceId": {{deviceId}},
+            "deviceName": "alice"
+          }
+        ]
+      }
+  extract:
+    header:
+      devicesEtag: etag
+
+# Test GET devices etag
+- name: v1 Get Devices Matching Etag
+  request:
+    method: GET
+    path: /api/v1/devices
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+      If-None-Match: "{{devicesEtag}}"
+  response:
+    status: 304
+
+# POST a feed
+- name: v1 POST a feed
+  request:
+    method: POST
+    path: /api/v1/feeds
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+    body: |
+      {
+        "contentHash": 123456789,
+        "encrypted": "encrypted_feed_content"
+      }
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    bodyType:
+      hash: int
+    body: |
+      {
+        "hash": 123456789
+      }
+
+# POST feed with etag (IF-MATCH)
+- name: v1 POST feed but etag doesn't match
+  request:
+    method: POST
+    path: /api/v1/feeds
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+      If-Match: '"foo"'
+    body: |
+      {
+        "contentHash": 987654321,
+        "encrypted": "encrypted_feed_content"
+      }
+  response:
+    status: 412
+
+- name: v1 POST feed and etag matches
+  request:
+    method: POST
+    path: /api/v1/feeds
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+      If-Match: '"123456789"'
+    body: |
+      {
+        "contentHash": 987654321,
+        "encrypted": "encrypted_feed_content"
+      }
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    body: |
+      {
+        "hash": 987654321
+      }
+
+# GET a feed
+- name: v1 GET a feed
+  request:
+    method: GET
+    path: /api/v1/feeds
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    bodyType:
+      hash: int
+      encrypted: string
+    body: |
+      {
+        "hash": 987654321,
+        "encrypted": "encrypted_feed_content"
+      }
+
+# TODO GET feed with etag
+# c.Header("Cache-Control", "private, must-revalidate")
+# 	c.Header("ETag", feeds.Etag)
+
+# POST a readmark
+- name: v1 POST a readmark
+  request:
+    method: POST
+    path: /api/v1/ereadmark
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+    body: |
+      {
+        "items": [
+          {
+            "encrypted": "encrypted_readmark_content"
+          }
+        ]
+      }
+  response:
+    status: 204
+
+# GET a readmark
+- name: v1 GET a readmark
+  request:
+    method: GET
+    path: /api/v1/ereadmark
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    bodyType:
+      "readMarks.0.encrypted": string
+      "readMarks.0.timestamp": int
+
+# JOIN a device
+- name: v1 JOIN a device
+  request:
+    method: POST
+    path: /api/v1/join
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+    body: |
+      {
+        "deviceName": "bob"
+      }
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    bodyType:
+      deviceId: int
+      syncCode: string
+  extract:
+    body:
+      newDeviceId: deviceId
+
+# GET devices after joining
+- name: v1 GET devices after joining
+  request:
+    method: GET
+    path: /api/v1/devices
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    bodyType:
+      "devices.0.deviceId": int
+      "devices.0.deviceName": string
+    body: |
+      {
+        "devices": [
+          {
+            "deviceId": {{deviceId}},
+            "deviceName": "alice"
+          },
+          {
+            "deviceId": {{newDeviceId}},
+            "deviceName": "bob"
+          }
+        ]
+      }
+
+# DELETE a device
+- name: v1 DELETE a device
+  request:
+    method: DELETE
+    path: /api/v1/devices/{{newDeviceId}}
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    body: |
+      {
+        "devices": [
+          {
+            "deviceId": {{deviceId}},
+            "deviceName": "alice"
+          }
+        ]
+      }
