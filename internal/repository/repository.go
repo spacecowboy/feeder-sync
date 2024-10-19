@@ -49,5 +49,6 @@ type UserAndDevice struct {
 	Device db.Device
 }
 
+var ErrNoReadMarks = errors.New("repository: no read marks")
 var ErrNoFeeds = errors.New("repository: no feeds")
 var ErrNoSuchDevice = errors.New("repository: no such device")

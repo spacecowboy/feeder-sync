@@ -135,13 +135,17 @@ func (r *PostgresRepository) UpdateLastSeenForDevice(ctx context.Context, device
 }
 
 func (r *PostgresRepository) GetArticlesUpdatedSince(ctx context.Context, user db.User, sinceMillis int64) ([]db.Article, error) {
-	return r.queries.GetArticlesUpdatedSince(ctx, db.GetArticlesUpdatedSinceParams{
+	articles, err := r.queries.GetArticlesUpdatedSince(ctx, db.GetArticlesUpdatedSinceParams{
 		UserDbID: user.DbID,
 		UpdatedAt: pgtype.Timestamptz{
 			Time:  time.UnixMilli(sinceMillis),
 			Valid: true,
 		},
 	})
+	if err != nil && err == pgx.ErrNoRows || len(articles) == 0 {
+		return articles, ErrNoReadMarks
+	}
+	return articles, err
 }
 
 func (r *PostgresRepository) AddArticle(ctx context.Context, user db.User, identifier string) (db.Article, error) {

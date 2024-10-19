@@ -351,9 +351,14 @@ func (s *FeederServer) handleGETReadmarkV1(c *gin.Context) {
 	articles, err := s.repo.GetArticlesUpdatedSince(c, user, since)
 
 	if err != nil {
-		log.Printf("Could not fetch articles: %s", err.Error())
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Could not fetch articles"})
-		return
+		if err == repository.ErrNoReadMarks {
+			c.Status(http.StatusNoContent)
+			return
+		} else {
+			log.Printf("Could not fetch articles: %s", err.Error())
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Could not fetch articles"})
+			return
+		}
 	}
 
 	response := GetReadmarksResponseV1{

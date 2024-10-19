@@ -136,6 +136,9 @@ func (suite *YamlTestSuite) TestCases() {
 
 			if tc.Response.Body != "" {
 				var expectedBody, actualBody map[string]interface{}
+				// Inject variables into the expected response body
+				tc.Response.Body = suite.replacevariables(tc.Response.Body)
+
 				err = json.Unmarshal([]byte(tc.Response.Body), &expectedBody)
 				require.NoError(t, err, "Failed to unmarshal expected response body")
 
