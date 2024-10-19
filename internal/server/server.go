@@ -78,21 +78,6 @@ func NewServerWithRepo(repo repository.Repository) (*FeederServer, error) {
 		fullyAuthed.POST("v1/feeds", server.handlePOSTFeedsV1)
 	}
 
-	// wrappedRouter := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	// 	m := httpsnoop.CaptureMetrics(router, w, r)
-	// 	log.Printf(
-	// 		"%s %s (code=%d dt=%s written=%d)",
-	// 		r.Method,
-	// 		r.URL,
-	// 		m.Code,
-	// 		m.Duration,
-	// 		m.Written,
-	// 	)
-	// },
-	// )
-
-	// server.handler = wrappedRouter
-
 	return &server, nil
 }
 
