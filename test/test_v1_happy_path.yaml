@@ -45,7 +45,7 @@
       X-FEEDER-DEVICE-ID: "{{deviceId}}"
   response:
     status: 204
-    
+
 - name: v1 Get Readmarks Empty
   request:
     method: GET
@@ -71,6 +71,7 @@
     status: 200
     headers:
       Content-Type: application/json; charset=utf-8
+      Cache-Control: private, must-revalidate
     body: |
       {
         "devices": [
@@ -80,6 +81,23 @@
           }
         ]
       }
+  extract:
+    header:
+      devicesEtag: etag
+
+# Test GET devices etag
+- name: v1 Get Devices Matching Etag
+  request:
+    method: GET
+    path: /api/v1/devices
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+      If-None-Match: "{{devicesEtag}}"
+  response:
+    status: 304
 
 # POST a feed
 - name: v1 POST a feed
@@ -107,6 +125,49 @@
         "hash": 123456789
       }
 
+# POST feed with etag (IF-MATCH)
+- name: v1 POST feed but etag doesn't match
+  request:
+    method: POST
+    path: /api/v1/feeds
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+      If-Match: '"foo"'
+    body: |
+      {
+        "contentHash": 987654321,
+        "encrypted": "encrypted_feed_content"
+      }
+  response:
+    status: 412
+
+- name: v1 POST feed and etag matches
+  request:
+    method: POST
+    path: /api/v1/feeds
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+      If-Match: '"123456789"'
+    body: |
+      {
+        "contentHash": 987654321,
+        "encrypted": "encrypted_feed_content"
+      }
+  response:
+    status: 200
+    headers:
+      Content-Type: application/json; charset=utf-8
+    body: |
+      {
+        "hash": 987654321
+      }
+
 # GET a feed
 - name: v1 GET a feed
   request:
@@ -126,9 +187,13 @@
       encrypted: string
     body: |
       {
-        "hash": 123456789,
+        "hash": 987654321,
         "encrypted": "encrypted_feed_content"
       }
+
+# TODO GET feed with etag
+# c.Header("Cache-Control", "private, must-revalidate")
+# 	c.Header("ETag", feeds.Etag)
 
 # POST a readmark
 - name: v1 POST a readmark

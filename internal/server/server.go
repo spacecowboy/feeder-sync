@@ -154,13 +154,12 @@ func etagValueForInt64(data int64) string {
 func (s *FeederServer) handleDeviceGetV1(c *gin.Context) {
 	user := c.MustGet("user").(db.User)
 
-	etagBytes, err := s.repo.GetDevicesEtag(c, user)
+	etag, err := s.repo.GetDevicesEtag(c, user)
 	if err != nil {
 		log.Printf("GetLegacyDevicesEtag error: %s", err.Error())
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
 		return
 	}
-	etag := string(etagBytes)
 
 	requestEtag := c.GetHeader("If-None-Match")
 	if matchesEtag(requestEtag, etag) {
@@ -189,9 +188,10 @@ func (s *FeederServer) handleDeviceGetV1(c *gin.Context) {
 		)
 	}
 
-	c.JSON(http.StatusOK, response)
 	c.Header("Cache-Control", "private, must-revalidate")
+	log.Printf("Setting ETag: %s", etag)
 	c.Header("ETag", etag)
+	c.JSON(http.StatusOK, response)
 }
 
 func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
@@ -282,20 +282,17 @@ func (s *FeederServer) handlePOSTFeedsV1(c *gin.Context) {
 	var currentEtag string
 
 	feeds, err := s.repo.GetLegacyFeeds(c, user)
-	if err != nil {
-		if err == repository.ErrNoFeeds {
-			currentEtag = ""
-		} else {
-			log.Printf("PostLegacyFeeds error: %s", err.Error())
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad", "err": err.Error()})
-			return
-		}
-	} else {
-		currentEtag = feeds.Etag
+	if err != nil && err != repository.ErrNoFeeds {
+		log.Printf("PostLegacyFeeds error: %s", err.Error())
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad", "err": err.Error()})
+		return
 	}
+
+	currentEtag = feeds.Etag
 
 	requestEtag := c.GetHeader("If-Match")
 	if !matchesEtag(requestEtag, currentEtag) {
+		log.Printf("Etag mismatch: [%s] != [%s]", requestEtag, currentEtag)
 		c.AbortWithStatus(http.StatusPreconditionFailed)
 		return
 	}

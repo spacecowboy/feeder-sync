@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	crand "crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -107,7 +108,7 @@ func (r *PostgresRepository) GetDevicesEtag(ctx context.Context, user db.User) (
 	if err != nil {
 		return "", err
 	}
-	return string(etagBytes), nil
+	return base64.StdEncoding.EncodeToString(etagBytes), nil
 }
 
 func (r *PostgresRepository) RemoveDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) (int, error) {
