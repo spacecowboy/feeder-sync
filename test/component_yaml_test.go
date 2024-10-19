@@ -94,6 +94,9 @@ func (suite *YamlTestSuite) TestCases() {
 			// Create a copy of the testCase to avoid modifying the original
 			tc := testCase
 
+			// Replace variables in the path
+			tc.Request.Path = suite.replacevariables(tc.Request.Path)
+
 			// Replace variables in the request body
 			tc.Request.Body = suite.replacevariables(tc.Request.Body)
 
