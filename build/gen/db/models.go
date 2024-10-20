@@ -12,16 +12,16 @@ type Article struct {
 	DbID       int64
 	ReadTime   pgtype.Timestamptz
 	Identifier string
-	UpdatedAt  pgtype.Timestamptz
 	UserDbID   int64
+	UpdatedAt  pgtype.Timestamptz
 }
 
 type Device struct {
 	DbID           int64
 	DeviceID       string
+	LegacyDeviceID int64
 	DeviceName     string
 	LastSeen       pgtype.Timestamptz
-	LegacyDeviceID int64
 	UserDbID       int64
 }
 
