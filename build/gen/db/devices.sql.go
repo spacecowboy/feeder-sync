@@ -74,7 +74,7 @@ func (q *Queries) DeleteDeviceWithLegacyId(ctx context.Context, arg DeleteDevice
 }
 
 const getAllDevices = `-- name: GetAllDevices :many
-SELECT db_id, device_id, device_name, last_seen, legacy_device_id, user_db_id FROM devices
+SELECT db_id, device_id, legacy_device_id, device_name, last_seen, user_db_id FROM devices
 `
 
 func (q *Queries) GetAllDevices(ctx context.Context) ([]Device, error) {
@@ -89,9 +89,9 @@ func (q *Queries) GetAllDevices(ctx context.Context) ([]Device, error) {
 		if err := rows.Scan(
 			&i.DbID,
 			&i.DeviceID,
+			&i.LegacyDeviceID,
 			&i.DeviceName,
 			&i.LastSeen,
-			&i.LegacyDeviceID,
 			&i.UserDbID,
 		); err != nil {
 			return nil, err
@@ -106,7 +106,7 @@ func (q *Queries) GetAllDevices(ctx context.Context) ([]Device, error) {
 
 const getDevices = `-- name: GetDevices :many
 SELECT
-    db_id, device_id, device_name, last_seen, legacy_device_id, user_db_id
+    db_id, device_id, legacy_device_id, device_name, last_seen, user_db_id
 FROM devices
 WHERE user_db_id = $1
 `
@@ -123,9 +123,9 @@ func (q *Queries) GetDevices(ctx context.Context, userDbID int64) ([]Device, err
 		if err := rows.Scan(
 			&i.DbID,
 			&i.DeviceID,
+			&i.LegacyDeviceID,
 			&i.DeviceName,
 			&i.LastSeen,
-			&i.LegacyDeviceID,
 			&i.UserDbID,
 		); err != nil {
 			return nil, err
@@ -140,7 +140,7 @@ func (q *Queries) GetDevices(ctx context.Context, userDbID int64) ([]Device, err
 
 const getLegacyDevice = `-- name: GetLegacyDevice :one
 SELECT
-    db_id, device_id, device_name, last_seen, legacy_device_id, user_db_id
+    db_id, device_id, legacy_device_id, device_name, last_seen, user_db_id
 FROM devices
 WHERE user_db_id = $1 AND legacy_device_id = $2
 LIMIT 1
@@ -157,9 +157,9 @@ func (q *Queries) GetLegacyDevice(ctx context.Context, arg GetLegacyDeviceParams
 	err := row.Scan(
 		&i.DbID,
 		&i.DeviceID,
+		&i.LegacyDeviceID,
 		&i.DeviceName,
 		&i.LastSeen,
-		&i.LegacyDeviceID,
 		&i.UserDbID,
 	)
 	return i, err
@@ -185,7 +185,7 @@ INSERT INTO devices (
     device_id, device_name, last_seen, legacy_device_id, user_db_id
 )
 VALUES ($1, $2, $3, $4, $5)
-RETURNING db_id, device_id, device_name, last_seen, legacy_device_id, user_db_id
+RETURNING db_id, device_id, legacy_device_id, device_name, last_seen, user_db_id
 `
 
 type InsertDeviceParams struct {
@@ -208,9 +208,9 @@ func (q *Queries) InsertDevice(ctx context.Context, arg InsertDeviceParams) (Dev
 	err := row.Scan(
 		&i.DbID,
 		&i.DeviceID,
+		&i.LegacyDeviceID,
 		&i.DeviceName,
 		&i.LastSeen,
-		&i.LegacyDeviceID,
 		&i.UserDbID,
 	)
 	return i, err

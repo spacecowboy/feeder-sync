@@ -1,13 +1,15 @@
 services:
 
   db:
-    image: postgres:15
+    image: postgres:16
     restart: unless-stopped
     volumes:
       # Uses a tmpfs volume to make tests extremely fast. The data in test
       # databases is not persisted across restarts, nor does it need to be.
       - type: tmpfs
         target: /var/lib/postgresql/data/
+      - ./backup/:/backup/
+      - ./postgres-init/:/docker-entrypoint-initdb.d/
     command:
       - "postgres"
       - "-c" # turn off fsync for speed
@@ -16,7 +18,19 @@ services:
       - "log_statement=all"
     environment:
       POSTGRES_PASSWORD: password
-      POSTGRES_USER: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_USER: feeder
+      POSTGRES_DB: feeder
     ports:
       - "55432:5432"
+
+# Build from docker/Dockerfile
+  feeder-migrator:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+    restart: unless-stopped
+    environment:
+      FEEDER_SYNC_POSTGRES_CONN: postgres://feeder:password@db:5432/feeder
+    depends_on:
+      - db
+    command: ["./feeder-sync-migrate"]

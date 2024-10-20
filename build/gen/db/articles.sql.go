@@ -13,7 +13,7 @@ import (
 
 const getAllArticles = `-- name: GetAllArticles :many
 SELECT
-    db_id, read_time, identifier, updated_at, user_db_id
+    db_id, read_time, identifier, user_db_id, updated_at
 FROM articles
 `
 
@@ -30,8 +30,8 @@ func (q *Queries) GetAllArticles(ctx context.Context) ([]Article, error) {
 			&i.DbID,
 			&i.ReadTime,
 			&i.Identifier,
-			&i.UpdatedAt,
 			&i.UserDbID,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -45,7 +45,7 @@ func (q *Queries) GetAllArticles(ctx context.Context) ([]Article, error) {
 
 const getArticlesUpdatedSince = `-- name: GetArticlesUpdatedSince :many
 SELECT
-    db_id, read_time, identifier, updated_at, user_db_id
+    db_id, read_time, identifier, user_db_id, updated_at
 FROM articles
 WHERE user_db_id = $1 AND updated_at > $2
 ORDER BY read_time DESC
@@ -70,8 +70,8 @@ func (q *Queries) GetArticlesUpdatedSince(ctx context.Context, arg GetArticlesUp
 			&i.DbID,
 			&i.ReadTime,
 			&i.Identifier,
-			&i.UpdatedAt,
 			&i.UserDbID,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -86,7 +86,7 @@ func (q *Queries) GetArticlesUpdatedSince(ctx context.Context, arg GetArticlesUp
 const insertArticle = `-- name: InsertArticle :one
 INSERT INTO articles (user_db_id, identifier, read_time, updated_at)
 VALUES ($1, $2, $3, $4)
-RETURNING db_id, read_time, identifier, updated_at, user_db_id
+RETURNING db_id, read_time, identifier, user_db_id, updated_at
 `
 
 type InsertArticleParams struct {
@@ -108,8 +108,8 @@ func (q *Queries) InsertArticle(ctx context.Context, arg InsertArticleParams) (A
 		&i.DbID,
 		&i.ReadTime,
 		&i.Identifier,
-		&i.UpdatedAt,
 		&i.UserDbID,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
