@@ -311,7 +311,7 @@ func (s *FeederServer) handlePOSTFeedsV1(c *gin.Context) {
 		ContentHash: feedsRequest.ContentHash,
 	}
 
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusCreated, response)
 }
 
 func (s *FeederServer) handleGETReadmarkV1(c *gin.Context) {
@@ -412,7 +412,7 @@ func (s *FeederServer) handleCreateV1(c *gin.Context) {
 		DeviceId: userDevice.Device.LegacyDeviceID,
 	}
 
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusCreated, response)
 }
 
 func (s *FeederServer) handleJoinV1(c *gin.Context) {
@@ -446,7 +446,7 @@ func (s *FeederServer) handleJoinV1(c *gin.Context) {
 		DeviceId: device.LegacyDeviceID,
 	}
 
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusCreated, response)
 }
 
 func (s *FeederServer) handleCreateV2(c *gin.Context) {
@@ -488,7 +488,7 @@ func (s *FeederServer) handleCreateV2(c *gin.Context) {
 		DeviceName: userDevice.Device.DeviceName,
 	}
 
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusCreated, response)
 }
 
 func (s *FeederServer) handleJoinV2(c *gin.Context) {
@@ -537,5 +537,5 @@ func (s *FeederServer) handleJoinV2(c *gin.Context) {
 		DeviceName: device.DeviceName,
 	}
 
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusCreated, response)
 }

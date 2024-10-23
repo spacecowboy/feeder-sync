@@ -1,13 +1,3 @@
-# All of these endpoints should return 400 if the body is missing a required field
-# apiKeyUserId.POST("v1/join", server.handleJoinV1)
-# apiKeyUserId.POST("v2/join", server.handleJoinV2)
-# fullyAuthed.GET("v1/ereadmark", server.handleGETReadmarkV1)
-# fullyAuthed.POST("v1/ereadmark", server.handlePOSTReadmarkV1)
-# fullyAuthed.POST("v1/devices", server.handleDeviceGetV1)
-# fullyAuthed.DELETE("v1/devices/:id", server.handleDeviceDeleteV1)
-# fullyAuthed.GET("v1/feeds", server.handleGETFeedsV1)
-# fullyAuthed.POST("v1/feeds", server.handlePOSTFeedsV1)
-
 - name: v1 Create to get sync code
   request:
     method: POST
@@ -20,7 +10,7 @@
         "deviceName": "alice"
       }
   response:
-    status: 200
+    status: 201
     headers:
       Content-Type: application/json; charset=utf-8
     bodyType:
