@@ -256,9 +256,9 @@ func (s *FeederServer) handleGETFeedsV1(c *gin.Context) {
 		Encrypted:   feeds.Content,
 	}
 
-	c.JSON(http.StatusOK, response)
 	c.Header("Cache-Control", "private, must-revalidate")
 	c.Header("ETag", feeds.Etag)
+	c.JSON(http.StatusOK, response)
 }
 
 func (s *FeederServer) handlePOSTFeedsV1(c *gin.Context) {
@@ -293,12 +293,14 @@ func (s *FeederServer) handlePOSTFeedsV1(c *gin.Context) {
 		return
 	}
 
+	newEtag := etagValueForInt64(feedsRequest.ContentHash)
+
 	_, err = s.repo.UpdateLegacyFeeds(
 		c,
 		user,
 		feedsRequest.ContentHash,
 		feedsRequest.Encrypted,
-		etagValueForInt64(feedsRequest.ContentHash),
+		newEtag,
 	)
 
 	if err != nil {
@@ -311,6 +313,7 @@ func (s *FeederServer) handlePOSTFeedsV1(c *gin.Context) {
 		ContentHash: feedsRequest.ContentHash,
 	}
 
+	c.Header("ETag", newEtag)
 	c.JSON(http.StatusCreated, response)
 }
 

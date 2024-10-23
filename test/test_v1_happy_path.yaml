@@ -112,6 +112,9 @@
       {
         "hash": 123456789
       }
+  extract:
+    header:
+      feedsEtag: ETag
 
 # POST feed with etag (IF-MATCH)
 - name: v1 POST feed but etag doesn't match
@@ -141,7 +144,7 @@
       Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
       X-FEEDER-ID: "{{syncCode}}"
       X-FEEDER-DEVICE-ID: "{{deviceId}}"
-      If-Match: '"123456789"'
+      If-Match: "{{feedsEtag}}"
     body: |
       {
         "contentHash": 987654321,
@@ -170,6 +173,7 @@
     status: 200
     headers:
       Content-Type: application/json; charset=utf-8
+      Cache-Control: private, must-revalidate
     bodyType:
       hash: int
       encrypted: string
@@ -178,10 +182,22 @@
         "hash": 987654321,
         "encrypted": "encrypted_feed_content"
       }
+  extract:
+    header:
+      feedsEtag: ETag
 
-# TODO GET feed with etag
-# c.Header("Cache-Control", "private, must-revalidate")
-# 	c.Header("ETag", feeds.Etag)
+- name: v1 GET feeds matching etag is 304
+  request:
+    method: GET
+    path: /api/v1/feeds
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+      If-None-Match: "{{feedsEtag}}"
+  response:
+    status: 304
 
 # POST a readmark
 - name: v1 POST a readmark
