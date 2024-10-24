@@ -1,8 +1,5 @@
 .PHONY: build
-build: out/webserver out/store_transfer out/db_migrator
-
-out/store_transfer: out generate
-	go build -o out/store_transfer ./cmd/store_transfer
+build: out/webserver out/db_migrator
 
 out/webserver: out generate
 	go build -o out/webserver ./cmd/webserver

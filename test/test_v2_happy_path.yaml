@@ -1,7 +1,3 @@
-# all endpoints
-# apiKeyOnly.POST("v2/create", server.handleCreateV2)
-# apiKeyUserId.POST("v2/join", server.handleJoinV2)
-
 - name: v2 Create Happy Path
   request:
     method: POST
@@ -14,7 +10,7 @@
         "deviceName": "alice"
       }
   response:
-    status: 200
+    status: 201
     headers:
       Content-Type: application/json; charset=utf-8
     bodyType:
@@ -41,7 +37,7 @@
         "deviceName": "bob"
       }
   response:
-    status: 200
+    status: 201
     headers:
       Content-Type: application/json; charset=utf-8
     bodyType:

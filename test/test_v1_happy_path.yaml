@@ -1,15 +1,3 @@
-# all endpoints
-# apiKeyOnly.POST("v1/create", server.handleCreateV1)
-# apiKeyOnly.POST("v2/create", server.handleCreateV2)
-# apiKeyUserId.POST("v1/join", server.handleJoinV1)
-# apiKeyUserId.POST("v2/join", server.handleJoinV2)
-# fullyAuthed.GET("v1/ereadmark", server.handleGETReadmarkV1)
-# fullyAuthed.POST("v1/ereadmark", server.handlePOSTReadmarkV1)
-# fullyAuthed.POST("v1/devices", server.handleDeviceGetV1)
-# fullyAuthed.DELETE("v1/devices/:id", server.handleDeviceDeleteV1)
-# fullyAuthed.GET("v1/feeds", server.handleGETFeedsV1)
-# fullyAuthed.POST("v1/feeds", server.handlePOSTFeedsV1)
-
 - name: v1 Create Happy Path
   request:
     method: POST
@@ -22,7 +10,7 @@
         "deviceName": "alice"
       }
   response:
-    status: 200
+    status: 201
     headers:
       Content-Type: application/json; charset=utf-8
     bodyType:
@@ -115,7 +103,7 @@
         "encrypted": "encrypted_feed_content"
       }
   response:
-    status: 200
+    status: 201
     headers:
       Content-Type: application/json; charset=utf-8
     bodyType:
@@ -124,6 +112,9 @@
       {
         "hash": 123456789
       }
+  extract:
+    header:
+      feedsEtag: ETag
 
 # POST feed with etag (IF-MATCH)
 - name: v1 POST feed but etag doesn't match
@@ -153,14 +144,14 @@
       Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
       X-FEEDER-ID: "{{syncCode}}"
       X-FEEDER-DEVICE-ID: "{{deviceId}}"
-      If-Match: '"123456789"'
+      If-Match: "{{feedsEtag}}"
     body: |
       {
         "contentHash": 987654321,
         "encrypted": "encrypted_feed_content"
       }
   response:
-    status: 200
+    status: 201
     headers:
       Content-Type: application/json; charset=utf-8
     body: |
@@ -182,6 +173,7 @@
     status: 200
     headers:
       Content-Type: application/json; charset=utf-8
+      Cache-Control: private, must-revalidate
     bodyType:
       hash: int
       encrypted: string
@@ -190,10 +182,22 @@
         "hash": 987654321,
         "encrypted": "encrypted_feed_content"
       }
+  extract:
+    header:
+      feedsEtag: ETag
 
-# TODO GET feed with etag
-# c.Header("Cache-Control", "private, must-revalidate")
-# 	c.Header("ETag", feeds.Etag)
+- name: v1 GET feeds matching etag is 304
+  request:
+    method: GET
+    path: /api/v1/feeds
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+      If-None-Match: "{{feedsEtag}}"
+  response:
+    status: 304
 
 # POST a readmark
 - name: v1 POST a readmark
@@ -248,7 +252,7 @@
         "deviceName": "bob"
       }
   response:
-    status: 200
+    status: 201
     headers:
       Content-Type: application/json; charset=utf-8
     bodyType:

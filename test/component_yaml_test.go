@@ -82,6 +82,7 @@ func (suite *YamlTestSuite) TearDownSuite() {
 func (suite *YamlTestSuite) replacevariables(input string) string {
 	replacements := []string{}
 	for k, v := range suite.Variables {
+		suite.T().Logf("Replacing %s with %s", k, v)
 		replacements = append(replacements, fmt.Sprintf("{{%s}}", k), v)
 	}
 	replacer := strings.NewReplacer(replacements...)
@@ -183,6 +184,11 @@ func (suite *YamlTestSuite) TestCases() {
 			for varName, headerName := range tc.Extract.Header {
 				// Extract value from the response headers
 				value := resp.Header.Get(headerName)
+
+				if value == "" {
+					t.Logf("Headers: %v", resp.Header)
+					t.Fatalf("Failed to extract header %s", headerName)
+				}
 
 				suite.Variables[varName] = value
 			}
