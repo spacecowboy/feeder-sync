@@ -36,7 +36,12 @@ func NewServerWithPostgres(connString string) (*FeederServer, error) {
 }
 
 func NewServerWithRepo(repo repository.Repository) (*FeederServer, error) {
-	router := gin.Default()
+	router := gin.New()
+	router.Use(
+		// Don't log health and ready endpoints
+		gin.LoggerWithWriter(gin.DefaultWriter, "/health", "/ready"),
+		gin.Recovery(),
+	)
 
 	server := FeederServer{
 		repo:   repo,
