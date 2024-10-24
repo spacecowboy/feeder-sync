@@ -11,7 +11,7 @@ import (
 
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacecowboy/feeder-sync/internal/migrations"
 	"github.com/spacecowboy/feeder-sync/internal/repository"
 	"github.com/spacecowboy/feeder-sync/internal/server"
@@ -150,11 +150,11 @@ func WithTmpfs() testcontainers.CustomizeRequestOption {
 }
 
 func NewRepository(ctx context.Context, container *postgres.PostgresContainer) *repository.PostgresRepository {
-	conn, err := pgx.Connect(ctx, connString)
+	pool, err := pgxpool.New(ctx, connString)
 	if err != nil {
 		fmt.Printf("Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
 
-	return repository.NewPostgresRepository(conn)
+	return repository.NewPostgresRepository(pool)
 }

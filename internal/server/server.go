@@ -11,7 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spacecowboy/feeder-sync/build/gen/db"
 	"github.com/spacecowboy/feeder-sync/internal/middleware"
 	"github.com/spacecowboy/feeder-sync/internal/repository"
@@ -25,12 +25,12 @@ type FeederServer struct {
 func NewServerWithPostgres(connString string) (*FeederServer, error) {
 	ctx := context.Background()
 
-	conn, err := pgx.Connect(ctx, connString)
+	pool, err := pgxpool.New(ctx, connString)
 	if err != nil {
 		return nil, err
 	}
 
-	repo := repository.NewPostgresRepository(conn)
+	repo := repository.NewPostgresRepository(pool)
 
 	return NewServerWithRepo(repo)
 }
@@ -107,7 +107,7 @@ func (s *FeederServer) handleHealth(c *gin.Context) {
 }
 
 func (s *FeederServer) handleReady(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(c, 5*time.Second)
+	ctx, cancel := context.WithTimeout(c, 1*time.Second)
 	defer cancel()
 	// Check if the database connection is alive
 	if err := s.repo.PingContext(ctx); err != nil {
