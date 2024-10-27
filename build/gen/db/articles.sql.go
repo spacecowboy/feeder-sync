@@ -11,6 +11,32 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteArticlesWithUserDbId = `-- name: DeleteArticlesWithUserDbId :many
+DELETE FROM articles
+WHERE user_db_id = $1
+RETURNING identifier
+`
+
+func (q *Queries) DeleteArticlesWithUserDbId(ctx context.Context, userDbID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, deleteArticlesWithUserDbId, userDbID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var identifier string
+		if err := rows.Scan(&identifier); err != nil {
+			return nil, err
+		}
+		items = append(items, identifier)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllArticles = `-- name: GetAllArticles :many
 SELECT
     db_id, read_time, identifier, user_db_id, updated_at

@@ -42,3 +42,8 @@ LIMIT 1;
 UPDATE devices
 SET last_seen = $1
 WHERE db_id = $2;
+
+-- name: DeleteDevicesWithUserDbId :many
+DELETE FROM devices
+WHERE user_db_id = $1
+RETURNING device_id;

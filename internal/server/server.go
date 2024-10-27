@@ -217,6 +217,18 @@ func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
 		return
 	}
 
+	if len(devices) == 0 {
+		// Last device was deleted - also delete the user
+		if _, err := s.repo.RemoveUser(c, user); err != nil {
+			log.Printf("Failed to delete user %s: %s", user.UserID, err.Error())
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
+			return
+		}
+
+		c.Status(http.StatusNoContent)
+		return
+	}
+
 	response := DeviceListResponseV1{
 		Devices: make([]DeviceMessageV1, 0, len(devices)),
 	}

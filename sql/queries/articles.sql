@@ -15,3 +15,8 @@ FROM articles
 WHERE user_db_id = $1 AND updated_at > $2
 ORDER BY read_time DESC
 LIMIT 1000;
+
+-- name: DeleteArticlesWithUserDbId :many
+DELETE FROM articles
+WHERE user_db_id = $1
+RETURNING identifier;

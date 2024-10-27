@@ -184,6 +184,42 @@ func (r *PostgresRepository) RemoveDeviceWithLegacyId(ctx context.Context, user 
 	return len(ids), err
 }
 
+func (r *PostgresRepository) RemoveUser(ctx context.Context, user db.User) (int, error) {
+	queries, release, err := r.queries(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer release()
+
+	// Would be a good idea to wrap this in a transaction
+	// Delete associated devices
+	_, err = queries.DeleteDevicesWithUserDbId(ctx, user.DbID)
+	if err != nil {
+		log.Printf("failed to delete devices: %v", err)
+		return 0, err
+	}
+
+	// Delete feeds
+	_, err = queries.DeleteLegacyFeedsWithUserDbId(ctx, user.DbID)
+	if err != nil {
+		log.Printf("failed to delete feeds: %v", err)
+		return 0, err
+	}
+
+	// Delete articles
+	_, err = queries.DeleteArticlesWithUserDbId(ctx, user.DbID)
+	if err != nil {
+		log.Printf("failed to delete articles: %v", err)
+		return 0, err
+	}
+
+	userIds, err := queries.DeleteUser(ctx, user.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return len(userIds), err
+}
+
 func (r *PostgresRepository) UpdateLastSeenForDevice(ctx context.Context, device db.Device) error {
 	queries, release, err := r.queries(ctx)
 	if err != nil {

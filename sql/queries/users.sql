@@ -20,3 +20,6 @@ SELECT * FROM users WHERE legacy_sync_code = $1 LIMIT 1;
 
 -- name: GetUserByUserId :one
 SELECT * FROM users WHERE user_id = $1 LIMIT 1;
+
+-- name: DeleteUser :many
+DELETE FROM users WHERE user_id = $1 RETURNING user_id;
