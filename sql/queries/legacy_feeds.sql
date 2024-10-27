@@ -24,3 +24,8 @@ SET content_hash = excluded.content_hash,
 content = excluded.content,
 etag = excluded.etag
 RETURNING db_id;
+
+-- name: DeleteLegacyFeedsWithUserDbId :many
+DELETE FROM legacy_feeds
+WHERE user_db_id = $1
+RETURNING db_id;

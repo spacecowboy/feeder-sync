@@ -9,6 +9,30 @@ import (
 	"context"
 )
 
+const deleteUser = `-- name: DeleteUser :many
+DELETE FROM users WHERE user_id = $1 RETURNING user_id
+`
+
+func (q *Queries) DeleteUser(ctx context.Context, userID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, deleteUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var user_id string
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllUsers = `-- name: GetAllUsers :many
 SELECT
     db_id,

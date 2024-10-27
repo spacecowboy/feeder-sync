@@ -316,3 +316,17 @@
           }
         ]
       }
+
+# Delete last device too and expect 204
+
+- name: v1 DELETE a device
+  request:
+    method: DELETE
+    path: /api/v1/devices/{{deviceId}}
+    headers:
+      Content-Type: application/json
+      Authorization: Basic ZmVlZGVyX3VzZXI6ZmVlZGVyX3NlY3JldF8xMjM0
+      X-FEEDER-ID: "{{syncCode}}"
+      X-FEEDER-DEVICE-ID: "{{deviceId}}"
+  response:
+    status: 204

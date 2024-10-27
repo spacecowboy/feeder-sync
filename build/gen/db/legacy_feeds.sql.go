@@ -9,6 +9,32 @@ import (
 	"context"
 )
 
+const deleteLegacyFeedsWithUserDbId = `-- name: DeleteLegacyFeedsWithUserDbId :many
+DELETE FROM legacy_feeds
+WHERE user_db_id = $1
+RETURNING db_id
+`
+
+func (q *Queries) DeleteLegacyFeedsWithUserDbId(ctx context.Context, userDbID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, deleteLegacyFeedsWithUserDbId, userDbID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var db_id int64
+		if err := rows.Scan(&db_id); err != nil {
+			return nil, err
+		}
+		items = append(items, db_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllLegacyFeeds = `-- name: GetAllLegacyFeeds :many
 SELECT
     db_id, content_hash, content, etag, user_db_id

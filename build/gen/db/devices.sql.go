@@ -73,6 +73,32 @@ func (q *Queries) DeleteDeviceWithLegacyId(ctx context.Context, arg DeleteDevice
 	return items, nil
 }
 
+const deleteDevicesWithUserDbId = `-- name: DeleteDevicesWithUserDbId :many
+DELETE FROM devices
+WHERE user_db_id = $1
+RETURNING device_id
+`
+
+func (q *Queries) DeleteDevicesWithUserDbId(ctx context.Context, userDbID int64) ([]string, error) {
+	rows, err := q.db.Query(ctx, deleteDevicesWithUserDbId, userDbID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var device_id string
+		if err := rows.Scan(&device_id); err != nil {
+			return nil, err
+		}
+		items = append(items, device_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getAllDevices = `-- name: GetAllDevices :many
 SELECT db_id, device_id, legacy_device_id, device_name, last_seen, user_db_id FROM devices
 `
