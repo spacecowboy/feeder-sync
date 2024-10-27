@@ -111,7 +111,7 @@ func (s *FeederServer) handleReady(c *gin.Context) {
 	defer cancel()
 	// Check if the database connection is alive
 	if err := s.repo.PingContext(ctx); err != nil {
-		log.Printf("Database connection is not ready: %s", err.Error())
+		log.Printf("handleReady: %s", err.Error())
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
 			"status": "Database connection is not ready",
 		})
@@ -179,7 +179,6 @@ func (s *FeederServer) handleDeviceGetV1(c *gin.Context) {
 	}
 
 	c.Header("Cache-Control", "private, must-revalidate")
-	log.Printf("Setting ETag: %s", etag)
 	c.Header("ETag", etag)
 	c.JSON(http.StatusOK, response)
 }
