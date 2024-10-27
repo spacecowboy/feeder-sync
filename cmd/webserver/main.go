@@ -9,24 +9,32 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/spacecowboy/feeder-sync/internal/config"
 	"github.com/spacecowboy/feeder-sync/internal/server"
 )
 
-func main() {
-	conn := os.Getenv("FEEDER_SYNC_POSTGRES_CONN")
+const (
+	FEEDER_SYNC_POSTGRES_CONN = "FEEDER_SYNC_POSTGRES_CONN"
+	DATABASE_URL              = "DATABASE_URL"
+	LISTEN_ADDRESS            = "LISTEN_ADDRESS"
+)
 
-	if conn == "" {
-		log.Fatal("FEEDER_SYNC_POSTGRES_CONN environment variable not set")
+func main() {
+	conn, err := config.GetDatabaseConn()
+	if err != nil {
+		log.Fatalf(err.Error())
 	}
+
+	listenAddress := config.GetListenAddress()
 
 	router, err := server.NewServerWithPostgres(conn)
 	if err != nil {
-		log.Fatalf("Failed to create server: %v", err)
+		log.Fatalf("main: %v", err)
 	}
 	defer router.Close()
 
 	srv := &http.Server{
-		Addr:    ":34217",
+		Addr:    listenAddress,
 		Handler: router,
 	}
 
@@ -35,7 +43,7 @@ func main() {
 	go func() {
 		log.Printf("Serving on %q...", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to serve: %v", err)
+			log.Fatalf("serve: %v", err)
 		}
 	}()
 
