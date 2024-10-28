@@ -42,10 +42,10 @@ func (q *Queries) DeleteDevice(ctx context.Context, arg DeleteDeviceParams) ([]s
 	return items, nil
 }
 
-const deleteDeviceWithLegacyId = `-- name: DeleteDeviceWithLegacyId :many
+const deleteDeviceWithLegacyId = `-- name: DeleteDeviceWithLegacyId :one
 DELETE FROM devices
 WHERE user_db_id = $1 AND legacy_device_id = $2
-RETURNING legacy_device_id
+RETURNING db_id, device_id, legacy_device_id, device_name, last_seen, user_db_id
 `
 
 type DeleteDeviceWithLegacyIdParams struct {
@@ -53,24 +53,18 @@ type DeleteDeviceWithLegacyIdParams struct {
 	LegacyDeviceID int64
 }
 
-func (q *Queries) DeleteDeviceWithLegacyId(ctx context.Context, arg DeleteDeviceWithLegacyIdParams) ([]int64, error) {
-	rows, err := q.db.Query(ctx, deleteDeviceWithLegacyId, arg.UserDbID, arg.LegacyDeviceID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []int64
-	for rows.Next() {
-		var legacy_device_id int64
-		if err := rows.Scan(&legacy_device_id); err != nil {
-			return nil, err
-		}
-		items = append(items, legacy_device_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) DeleteDeviceWithLegacyId(ctx context.Context, arg DeleteDeviceWithLegacyIdParams) (Device, error) {
+	row := q.db.QueryRow(ctx, deleteDeviceWithLegacyId, arg.UserDbID, arg.LegacyDeviceID)
+	var i Device
+	err := row.Scan(
+		&i.DbID,
+		&i.DeviceID,
+		&i.LegacyDeviceID,
+		&i.DeviceName,
+		&i.LastSeen,
+		&i.UserDbID,
+	)
+	return i, err
 }
 
 const deleteDevicesWithUserDbId = `-- name: DeleteDevicesWithUserDbId :many

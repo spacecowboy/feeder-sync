@@ -1,11 +1,14 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/robfig/go-cache"
 	"github.com/spacecowboy/feeder-sync/build/gen/db"
 	"github.com/spacecowboy/feeder-sync/internal/repository"
 )
@@ -30,12 +33,22 @@ func AssertBasicAuth() gin.HandlerFunc {
 	}
 }
 
-func AssertRegisteredUser(repo repository.Repository) gin.HandlerFunc {
+func AssertRegisteredUser(
+	repo repository.Repository,
+	cache *cache.Cache,
+) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		syncCode := c.GetHeader("X-FEEDER-ID")
 		userIdString := c.GetHeader("X-FEEDER-USER-ID")
 
 		if userIdString != "" {
+			// Check if the user is in the cache
+			if user, found := cache.Get(userIdString); found {
+				c.Set("user", user)
+				c.Next()
+				return
+			}
+
 			userId, err := uuid.Parse(userIdString)
 			if err != nil {
 				c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Unauthorized"})
@@ -48,14 +61,27 @@ func AssertRegisteredUser(repo repository.Repository) gin.HandlerFunc {
 				return
 			}
 
+			// Set the user in the cache
+			cache.Set(syncCode, user, time.Minute)
+			cache.Set(user.UserID, user, time.Minute)
 			c.Set("user", user)
 		} else if syncCode != "" {
+			// Check if the user is in the cache
+			if user, found := cache.Get(syncCode); found {
+				c.Set("user", user)
+				c.Next()
+				return
+			}
+
 			user, err := repo.GetUserBySyncCode(c, syncCode)
 			if err != nil {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 				return
 			}
 
+			// Set the user in the cache
+			cache.Set(syncCode, user, time.Minute)
+			cache.Set(user.UserID, user, time.Minute)
 			c.Set("user", user)
 		} else {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
@@ -66,7 +92,10 @@ func AssertRegisteredUser(repo repository.Repository) gin.HandlerFunc {
 	}
 }
 
-func AssertRegisteredUserAndDevice(repo repository.Repository) gin.HandlerFunc {
+func AssertRegisteredUserAndDevice(
+	repo repository.Repository,
+	cache *cache.Cache,
+) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Legacy user id
 		syncCode := c.GetHeader("X-FEEDER-ID")
@@ -74,11 +103,30 @@ func AssertRegisteredUserAndDevice(repo repository.Repository) gin.HandlerFunc {
 		deviceIdString := c.GetHeader("X-FEEDER-DEVICE-ID")
 
 		if deviceIdString != "" && syncCode != "" {
+			// Check cache
+			userInterface, userFound := cache.Get(syncCode)
+			deviceInterface, deviceFound := cache.Get(deviceIdString)
+
+			if userFound && deviceFound {
+				c.Set("user", userInterface.(db.User))
+				c.Set("device", deviceInterface.(db.Device))
+				c.Next()
+				return
+			}
+
 			user, device, err := assertLegacyDevice(c, repo, syncCode, deviceIdString)
 			if err != nil {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": DEVICE_NOT_REGISTERED, "value": deviceIdString})
 				return
 			}
+			// Set the user in the cache
+			cache.Set(user.LegacySyncCode, user, time.Minute)
+			cache.Set(user.UserID, user, time.Minute)
+
+			// Set the device in the cache
+			cache.Set(device.DeviceID, device, time.Minute)
+			cache.Set(fmt.Sprintf("%d", device.LegacyDeviceID), device, time.Minute)
+
 			c.Set("user", user)
 			c.Set("device", device)
 			c.Next()
@@ -87,11 +135,31 @@ func AssertRegisteredUserAndDevice(repo repository.Repository) gin.HandlerFunc {
 
 		userIdString := c.GetHeader("X-FEEDER-USER-ID")
 		if userIdString != "" && deviceIdString != "" {
+			// Check cache
+			userInterface, userFound := cache.Get(userIdString)
+			deviceInterface, deviceFound := cache.Get(deviceIdString)
+
+			if userFound && deviceFound {
+				c.Set("user", userInterface.(db.User))
+				c.Set("device", deviceInterface.(db.Device))
+				c.Next()
+				return
+			}
+
 			user, device, err := assertUserAndDevice(c, repo, userIdString, deviceIdString)
 			if err != nil {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": DEVICE_NOT_REGISTERED, "value": deviceIdString})
 				return
 			}
+
+			// Set the user in the cache
+			cache.Set(syncCode, user, time.Minute)
+			cache.Set(user.UserID, user, time.Minute)
+
+			// Set the device in the cache
+			cache.Set(device.DeviceID, device, time.Minute)
+			cache.Set(fmt.Sprintf("%d", device.LegacyDeviceID), device, time.Minute)
+
 			c.Set("user", user)
 			c.Set("device", device)
 			c.Next()
@@ -99,7 +167,6 @@ func AssertRegisteredUserAndDevice(repo repository.Repository) gin.HandlerFunc {
 		}
 
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-		return
 	}
 }
 
