@@ -164,24 +164,25 @@ func (r *PostgresRepository) GetDevicesEtag(ctx context.Context, user db.User) (
 	return base64.StdEncoding.EncodeToString(etagBytes), nil
 }
 
-func (r *PostgresRepository) RemoveDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) (int, error) {
+func (r *PostgresRepository) RemoveDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) (db.Device, error) {
 	queries, release, err := r.queries(ctx)
 	if err != nil {
-		return 0, err
+		return db.Device{}, err
 	}
 	defer release()
 
-	ids, err := queries.DeleteDeviceWithLegacyId(ctx, db.DeleteDeviceWithLegacyIdParams{
+	device, err := queries.DeleteDeviceWithLegacyId(ctx, db.DeleteDeviceWithLegacyIdParams{
 		UserDbID:       user.DbID,
 		LegacyDeviceID: legacyDeviceId,
 	})
 	if err != nil {
-		return 0, err
+		if err == pgx.ErrNoRows {
+			return db.Device{}, ErrNoSuchDevice
+		}
+		return db.Device{}, err
 	}
-	if len(ids) == 0 {
-		return 0, ErrNoSuchDevice
-	}
-	return len(ids), err
+
+	return device, err
 }
 
 func (r *PostgresRepository) RemoveUser(ctx context.Context, user db.User) (int, error) {

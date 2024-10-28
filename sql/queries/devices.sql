@@ -10,10 +10,10 @@ DELETE FROM devices
 WHERE user_db_id = $1 AND device_id = $2
 RETURNING device_id;
 
--- name: DeleteDeviceWithLegacyId :many
+-- name: DeleteDeviceWithLegacyId :one
 DELETE FROM devices
 WHERE user_db_id = $1 AND legacy_device_id = $2
-RETURNING legacy_device_id;
+RETURNING *;
 
 -- name: GetAllDevices :many
 SELECT * FROM devices;

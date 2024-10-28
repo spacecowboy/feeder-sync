@@ -7,6 +7,7 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.18.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.5.5
+	github.com/robfig/go-cache v0.0.0-20130306151617-9fc39e0dbf62
 	github.com/stretchr/testify v1.9.0
 	github.com/testcontainers/testcontainers-go v0.33.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.33.0

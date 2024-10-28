@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/robfig/go-cache"
 	"github.com/spacecowboy/feeder-sync/build/gen/db"
 	"github.com/spacecowboy/feeder-sync/internal/middleware"
 	"github.com/spacecowboy/feeder-sync/internal/repository"
@@ -19,6 +20,7 @@ import (
 
 type FeederServer struct {
 	repo   repository.Repository
+	cache  *cache.Cache
 	Router *gin.Engine
 }
 
@@ -31,11 +33,16 @@ func NewServerWithPostgres(connString string) (*FeederServer, error) {
 	}
 
 	repo := repository.NewPostgresRepository(pool)
+	// Default expiration time is 1 minute, cleanup interval is 30 seconds
+	cache := cache.New(time.Minute, 30*time.Second)
 
-	return NewServerWithRepo(repo)
+	return NewServerWith(repo, cache)
 }
 
-func NewServerWithRepo(repo repository.Repository) (*FeederServer, error) {
+func NewServerWith(
+	repo repository.Repository,
+	cache *cache.Cache,
+) (*FeederServer, error) {
 	router := gin.New()
 	router.Use(
 		// Don't log health and ready endpoints
@@ -45,13 +52,14 @@ func NewServerWithRepo(repo repository.Repository) (*FeederServer, error) {
 
 	server := FeederServer{
 		repo:   repo,
+		cache:  cache,
 		Router: router,
 	}
 
 	// Middleware
 	assertBasicAuth := middleware.AssertBasicAuth()
-	assertUser := middleware.AssertRegisteredUser(repo)
-	assertUserAndDevice := middleware.AssertRegisteredUserAndDevice(repo)
+	assertUser := middleware.AssertRegisteredUser(repo, cache)
+	assertUserAndDevice := middleware.AssertRegisteredUserAndDevice(repo, cache)
 	updateLastSeen := middleware.UpdateLastSeenForDevice(repo)
 
 	// These have no middleware
@@ -199,7 +207,7 @@ func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
 		return
 	}
 
-	_, err = s.repo.RemoveDeviceWithLegacyId(c, user, legacyDeviceId)
+	device, err := s.repo.RemoveDeviceWithLegacyId(c, user, legacyDeviceId)
 	if err != nil {
 		log.Printf("Failed to delete device %d: %s", legacyDeviceId, err.Error())
 		if err == repository.ErrNoSuchDevice {
@@ -209,6 +217,9 @@ func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
 		}
 		return
 	}
+	// Device was deleted so remove it from the cache
+	s.cache.Delete(legacyDeviceIdString)
+	s.cache.Delete(device.DeviceID)
 
 	devices, err := s.repo.GetDevices(c, user)
 	if err != nil {
@@ -220,10 +231,13 @@ func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
 	if len(devices) == 0 {
 		// Last device was deleted - also delete the user
 		if _, err := s.repo.RemoveUser(c, user); err != nil {
-			log.Printf("Failed to delete user %s: %s", user.UserID, err.Error())
+			log.Printf("delete user %s: %s", user.UserID, err.Error())
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
 			return
 		}
+
+		// Also delete user from cache
+		s.cache.Delete(user.UserID)
 
 		c.Status(http.StatusNoContent)
 		return
