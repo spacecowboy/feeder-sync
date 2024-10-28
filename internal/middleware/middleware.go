@@ -66,32 +66,40 @@ func AssertRegisteredUser(repo repository.Repository) gin.HandlerFunc {
 	}
 }
 
-func AssertRegisteredDevice(repo repository.Repository) gin.HandlerFunc {
+func AssertRegisteredUserAndDevice(repo repository.Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Legacy user id
+		syncCode := c.GetHeader("X-FEEDER-ID")
 		// This is the legacy device id (int64)
-		legacyDeviceIdString := c.GetHeader("X-FEEDER-DEVICE-ID")
+		deviceIdString := c.GetHeader("X-FEEDER-DEVICE-ID")
 
-		if legacyDeviceIdString == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		if deviceIdString != "" && syncCode != "" {
+			user, device, err := assertLegacyDevice(c, repo, syncCode, deviceIdString)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": DEVICE_NOT_REGISTERED, "value": deviceIdString})
+				return
+			}
+			c.Set("user", user)
+			c.Set("device", device)
+			c.Next()
 			return
 		}
 
-		legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Unauthorized"})
+		userIdString := c.GetHeader("X-FEEDER-USER-ID")
+		if userIdString != "" && deviceIdString != "" {
+			user, device, err := assertUserAndDevice(c, repo, userIdString, deviceIdString)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": DEVICE_NOT_REGISTERED, "value": deviceIdString})
+				return
+			}
+			c.Set("user", user)
+			c.Set("device", device)
+			c.Next()
 			return
 		}
 
-		user := c.MustGet("user").(db.User)
-		device, err := repo.GetDeviceWithLegacyId(c, user, legacyDeviceId)
-
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": DEVICE_NOT_REGISTERED, "value": legacyDeviceId})
-			return
-		}
-
-		c.Set("device", device)
-		c.Next()
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
 	}
 }
 
@@ -105,4 +113,47 @@ func UpdateLastSeenForDevice(repo repository.Repository) gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+func assertLegacyDevice(
+	c *gin.Context,
+	repo repository.Repository,
+	syncCode string,
+	legacyDeviceIdString string,
+) (db.User, db.Device, error) {
+	legacyDeviceId, err := strconv.ParseInt(legacyDeviceIdString, 10, 64)
+	if err != nil {
+		return db.User{}, db.Device{}, err
+	}
+
+	result, err := repo.GetUserAndDeviceWithLegacy(c, syncCode, legacyDeviceId)
+	if err != nil {
+		return db.User{}, db.Device{}, err
+	}
+
+	return result.User, result.Device, nil
+}
+
+func assertUserAndDevice(
+	c *gin.Context,
+	repo repository.Repository,
+	userIdString string,
+	deviceIdString string,
+) (db.User, db.Device, error) {
+	userId, err := uuid.Parse(userIdString)
+	if err != nil {
+		return db.User{}, db.Device{}, err
+	}
+
+	deviceId, err := uuid.Parse(deviceIdString)
+	if err != nil {
+		return db.User{}, db.Device{}, err
+	}
+
+	result, err := repo.GetUserAndDevice(c, userId, deviceId)
+	if err != nil {
+		return db.User{}, db.Device{}, err
+	}
+
+	return result.User, result.Device, nil
 }

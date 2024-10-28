@@ -206,6 +206,80 @@ func (q *Queries) GetLegacyDevicesEtag(ctx context.Context, userDbID int64) ([]b
 	return sha256, err
 }
 
+const getSyncCodeAndLegacyDevice = `-- name: GetSyncCodeAndLegacyDevice :one
+SELECT
+    users.db_id, users.user_id, users.legacy_sync_code,
+    devices.db_id, devices.device_id, devices.legacy_device_id, devices.device_name, devices.last_seen, devices.user_db_id
+FROM devices
+JOIN users ON devices.user_db_id = users.db_id
+WHERE devices.legacy_device_id = $1 AND users.legacy_sync_code = $2
+LIMIT 1
+`
+
+type GetSyncCodeAndLegacyDeviceParams struct {
+	LegacyDeviceID int64
+	LegacySyncCode string
+}
+
+type GetSyncCodeAndLegacyDeviceRow struct {
+	User   User
+	Device Device
+}
+
+func (q *Queries) GetSyncCodeAndLegacyDevice(ctx context.Context, arg GetSyncCodeAndLegacyDeviceParams) (GetSyncCodeAndLegacyDeviceRow, error) {
+	row := q.db.QueryRow(ctx, getSyncCodeAndLegacyDevice, arg.LegacyDeviceID, arg.LegacySyncCode)
+	var i GetSyncCodeAndLegacyDeviceRow
+	err := row.Scan(
+		&i.User.DbID,
+		&i.User.UserID,
+		&i.User.LegacySyncCode,
+		&i.Device.DbID,
+		&i.Device.DeviceID,
+		&i.Device.LegacyDeviceID,
+		&i.Device.DeviceName,
+		&i.Device.LastSeen,
+		&i.Device.UserDbID,
+	)
+	return i, err
+}
+
+const getUserAndDevice = `-- name: GetUserAndDevice :one
+SELECT
+    users.db_id, users.user_id, users.legacy_sync_code,
+    devices.db_id, devices.device_id, devices.legacy_device_id, devices.device_name, devices.last_seen, devices.user_db_id
+FROM devices
+JOIN users ON devices.user_db_id = users.db_id
+WHERE devices.device_id = $1 AND users.user_id = $2
+LIMIT 1
+`
+
+type GetUserAndDeviceParams struct {
+	DeviceID string
+	UserID   string
+}
+
+type GetUserAndDeviceRow struct {
+	User   User
+	Device Device
+}
+
+func (q *Queries) GetUserAndDevice(ctx context.Context, arg GetUserAndDeviceParams) (GetUserAndDeviceRow, error) {
+	row := q.db.QueryRow(ctx, getUserAndDevice, arg.DeviceID, arg.UserID)
+	var i GetUserAndDeviceRow
+	err := row.Scan(
+		&i.User.DbID,
+		&i.User.UserID,
+		&i.User.LegacySyncCode,
+		&i.Device.DbID,
+		&i.Device.DeviceID,
+		&i.Device.LegacyDeviceID,
+		&i.Device.DeviceName,
+		&i.Device.LastSeen,
+		&i.Device.UserDbID,
+	)
+	return i, err
+}
+
 const insertDevice = `-- name: InsertDevice :one
 INSERT INTO devices (
     device_id, device_name, last_seen, legacy_device_id, user_db_id

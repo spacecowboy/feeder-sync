@@ -25,6 +25,8 @@ type Repository interface {
 	GetUserByUserId(ctx context.Context, userId uuid.UUID) (db.User, error)
 	GetUserBySyncCode(ctx context.Context, syncCode string) (db.User, error)
 	GetDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) (db.Device, error)
+	GetUserAndDeviceWithLegacy(ctx context.Context, syncCode string, legacyDeviceId int64) (db.GetSyncCodeAndLegacyDeviceRow, error)
+	GetUserAndDevice(ctx context.Context, userId uuid.UUID, deviceId uuid.UUID) (db.GetUserAndDeviceRow, error)
 	RemoveDeviceWithLegacyId(ctx context.Context, user db.User, legacyDeviceId int64) (int, error)
 	RemoveUser(ctx context.Context, user db.User) (int, error)
 

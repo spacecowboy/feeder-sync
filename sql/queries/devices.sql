@@ -47,3 +47,21 @@ WHERE db_id = $2;
 DELETE FROM devices
 WHERE user_db_id = $1
 RETURNING device_id;
+
+-- name: GetSyncCodeAndLegacyDevice :one
+SELECT
+    sqlc.embed(users),
+    sqlc.embed(devices)
+FROM devices
+JOIN users ON devices.user_db_id = users.db_id
+WHERE devices.legacy_device_id = $1 AND users.legacy_sync_code = $2
+LIMIT 1;
+
+-- name: GetUserAndDevice :one
+SELECT
+    sqlc.embed(users),
+    sqlc.embed(devices)
+FROM devices
+JOIN users ON devices.user_db_id = users.db_id
+WHERE devices.device_id = $1 AND users.user_id = $2
+LIMIT 1;

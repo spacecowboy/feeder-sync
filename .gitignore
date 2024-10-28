@@ -8,3 +8,4 @@ target
 *.db
 out
 .env
+__pycache__
