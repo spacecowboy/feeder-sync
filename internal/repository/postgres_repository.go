@@ -42,6 +42,20 @@ func (r *PostgresRepository) queries(ctx context.Context) (*db.Queries, func(), 
 	return db.New(conn), conn.Release, nil
 }
 
+func (r *PostgresRepository) transaction(ctx context.Context) (*db.Queries, pgx.Tx, func(), error) {
+	conn, err := r.pool.Acquire(ctx)
+	if err != nil {
+		log.Printf("failed to acquire connection: %v", err)
+		return nil, nil, nil, err
+	}
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		log.Printf("failed to begin transaction: %v", err)
+		return nil, nil, nil, err
+	}
+	return db.New(tx), tx, conn.Release, nil
+}
+
 func (r *PostgresRepository) Close(ctx context.Context) error {
 	r.pool.Close()
 	return nil
@@ -202,14 +216,24 @@ func (r *PostgresRepository) DeleteOldDevices(ctx context.Context) error {
 	)
 }
 
-func (r *PostgresRepository) RemoveUser(ctx context.Context, user db.User) (int, error) {
+func (r *PostgresRepository) GetUsersWithoutDevices(ctx context.Context) ([]db.User, error) {
 	queries, release, err := r.queries(ctx)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer release()
 
-	// Would be a good idea to wrap this in a transaction
+	return queries.GetUsersWithoutDevices(ctx)
+}
+
+func (r *PostgresRepository) RemoveUser(ctx context.Context, user db.User) (int, error) {
+	queries, tx, release, err := r.transaction(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+	defer release()
+
 	// Delete associated devices
 	_, err = queries.DeleteDevicesWithUserDbId(ctx, user.DbID)
 	if err != nil {
@@ -235,6 +259,12 @@ func (r *PostgresRepository) RemoveUser(ctx context.Context, user db.User) (int,
 	if err != nil {
 		return 0, err
 	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return 0, err
+	}
+
 	return len(userIds), err
 }
 
