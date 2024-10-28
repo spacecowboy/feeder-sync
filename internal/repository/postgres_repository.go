@@ -268,6 +268,28 @@ func (r *PostgresRepository) RemoveUser(ctx context.Context, user db.User) (int,
 	return len(userIds), err
 }
 
+func (r *PostgresRepository) DeleteFullySyncedArticles(ctx context.Context) error {
+	queries, release, err := r.queries(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	userRows, err := queries.GetUsersWithDevices(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, userRow := range userRows {
+		err := queries.DeleteArticlesOlderThanDeviceLastSeen(ctx, userRow.User.DbID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *PostgresRepository) UpdateLastSeenForDevice(ctx context.Context, device db.Device) error {
 	queries, release, err := r.queries(ctx)
 	if err != nil {

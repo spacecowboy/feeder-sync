@@ -37,6 +37,7 @@ type Repository interface {
 	// Janitor functions
 	DeleteOldDevices(ctx context.Context) error
 	GetUsersWithoutDevices(ctx context.Context) ([]db.User, error)
+	DeleteFullySyncedArticles(ctx context.Context) error
 
 	// Admin functions
 	TransferUsers(ctx context.Context, repository Repository) error

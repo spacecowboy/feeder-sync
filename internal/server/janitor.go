@@ -29,6 +29,10 @@ func (j *Janitor) Run(server *FeederServer) {
 			if err != nil {
 				log.Printf("Error deleting users without devices: %v", err)
 			}
+			err = server.DeleteFullySyncedArticles(ctx)
+			if err != nil {
+				log.Printf("Error deleting fully synced articles: %v", err)
+			}
 		case <-j.Stop:
 			return
 		}

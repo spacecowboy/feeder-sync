@@ -33,19 +33,6 @@ func (q *Queries) DeleteUser(ctx context.Context, userID string) ([]string, erro
 	return items, nil
 }
 
-const deleteUsersWithoutDevices = `-- name: DeleteUsersWithoutDevices :exec
-DELETE FROM users
-WHERE db_id NOT IN (
-    SELECT user_db_id
-    FROM devices
-)
-`
-
-func (q *Queries) DeleteUsersWithoutDevices(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, deleteUsersWithoutDevices)
-	return err
-}
-
 const getAllUsers = `-- name: GetAllUsers :many
 SELECT
     db_id,
@@ -120,6 +107,47 @@ func (q *Queries) GetUserDbIdBySyncCode(ctx context.Context, legacySyncCode stri
 	var db_id int64
 	err := row.Scan(&db_id)
 	return db_id, err
+}
+
+const getUsersWithDevices = `-- name: GetUsersWithDevices :many
+SELECT
+    users.db_id, users.user_id, users.legacy_sync_code,
+    max(devices.last_seen) AS last_seen
+FROM users
+INNER JOIN devices ON users.db_id = devices.user_db_id
+GROUP BY users.db_id
+ORDER BY last_seen DESC
+LIMIT 10000
+`
+
+type GetUsersWithDevicesRow struct {
+	User     User
+	LastSeen interface{}
+}
+
+func (q *Queries) GetUsersWithDevices(ctx context.Context) ([]GetUsersWithDevicesRow, error) {
+	rows, err := q.db.Query(ctx, getUsersWithDevices)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUsersWithDevicesRow
+	for rows.Next() {
+		var i GetUsersWithDevicesRow
+		if err := rows.Scan(
+			&i.User.DbID,
+			&i.User.UserID,
+			&i.User.LegacySyncCode,
+			&i.LastSeen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUsersWithoutDevices = `-- name: GetUsersWithoutDevices :many

@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const deleteArticlesOlderThanDeviceLastSeen = `-- name: DeleteArticlesOlderThanDeviceLastSeen :exec
+DELETE FROM articles
+WHERE articles.user_db_id = $1 AND articles.updated_at < (
+    SELECT devices.last_seen
+    FROM devices
+    WHERE devices.user_db_id = $1
+    ORDER BY devices.last_seen DESC
+    LIMIT 1
+)
+`
+
+func (q *Queries) DeleteArticlesOlderThanDeviceLastSeen(ctx context.Context, userDbID int64) error {
+	_, err := q.db.Exec(ctx, deleteArticlesOlderThanDeviceLastSeen, userDbID)
+	return err
+}
+
 const deleteArticlesWithUserDbId = `-- name: DeleteArticlesWithUserDbId :many
 DELETE FROM articles
 WHERE user_db_id = $1

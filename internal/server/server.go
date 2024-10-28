@@ -126,6 +126,10 @@ func (s *FeederServer) DeleteUsersWithoutDevices(ctx context.Context) error {
 	return nil
 }
 
+func (s *FeederServer) DeleteFullySyncedArticles(ctx context.Context) error {
+	return s.repo.DeleteFullySyncedArticles(ctx)
+}
+
 func (s *FeederServer) handleHealth(c *gin.Context) {
 	if s.Router != nil && s.repo != nil {
 		c.JSON(http.StatusOK, gin.H{

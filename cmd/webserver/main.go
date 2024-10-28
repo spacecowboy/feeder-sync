@@ -35,7 +35,7 @@ func main() {
 
 	// Start the janitor
 	janitor := &server.Janitor{
-		Interval: 4 * time.Hour,
+		Interval: 5 * time.Minute,
 	}
 	go janitor.Run(feederServer)
 

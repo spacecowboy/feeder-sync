@@ -20,3 +20,13 @@ LIMIT 1000;
 DELETE FROM articles
 WHERE user_db_id = $1
 RETURNING identifier;
+
+-- name: DeleteArticlesOlderThanDeviceLastSeen :exec
+DELETE FROM articles
+WHERE articles.user_db_id = $1 AND articles.updated_at < (
+    SELECT devices.last_seen
+    FROM devices
+    WHERE devices.user_db_id = $1
+    ORDER BY devices.last_seen DESC
+    LIMIT 1
+);

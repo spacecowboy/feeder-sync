@@ -32,3 +32,13 @@ WHERE db_id NOT IN (
     FROM devices
 )
 LIMIT 10000;
+
+-- name: GetUsersWithDevices :many
+SELECT
+    sqlc.embed(users),
+    max(devices.last_seen) AS last_seen
+FROM users
+INNER JOIN devices ON users.db_id = devices.user_db_id
+GROUP BY users.db_id
+ORDER BY last_seen DESC
+LIMIT 10000;
