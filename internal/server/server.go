@@ -51,7 +51,7 @@ func NewServerWithRepo(repo repository.Repository) (*FeederServer, error) {
 	// Middleware
 	assertBasicAuth := middleware.AssertBasicAuth()
 	assertUser := middleware.AssertRegisteredUser(repo)
-	assertDevice := middleware.AssertRegisteredDevice(repo)
+	assertUserAndDevice := middleware.AssertRegisteredUserAndDevice(repo)
 	updateLastSeen := middleware.UpdateLastSeenForDevice(repo)
 
 	// These have no middleware
@@ -73,7 +73,7 @@ func NewServerWithRepo(repo repository.Repository) (*FeederServer, error) {
 	}
 
 	// auth, userid, deviceid
-	fullyAuthed := router.Group("/api", assertBasicAuth, assertUser, assertDevice, updateLastSeen)
+	fullyAuthed := router.Group("/api", assertBasicAuth, assertUserAndDevice, updateLastSeen)
 	{
 		fullyAuthed.GET("v1/ereadmark", server.handleGETReadmarkV1)
 		fullyAuthed.POST("v1/ereadmark", server.handlePOSTReadmarkV1)

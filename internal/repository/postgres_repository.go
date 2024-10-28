@@ -304,6 +304,46 @@ func (r *PostgresRepository) UpdateLegacyFeeds(ctx context.Context, user db.User
 	})
 }
 
+func (r *PostgresRepository) GetUserAndDeviceWithLegacy(
+	ctx context.Context,
+	syncCode string,
+	legacyDeviceId int64,
+) (db.GetSyncCodeAndLegacyDeviceRow, error) {
+	queries, release, err := r.queries(ctx)
+	if err != nil {
+		return db.GetSyncCodeAndLegacyDeviceRow{}, err
+	}
+	defer release()
+
+	return queries.GetSyncCodeAndLegacyDevice(
+		ctx,
+		db.GetSyncCodeAndLegacyDeviceParams{
+			LegacyDeviceID: legacyDeviceId,
+			LegacySyncCode: syncCode,
+		},
+	)
+}
+
+func (r *PostgresRepository) GetUserAndDevice(
+	ctx context.Context,
+	userId uuid.UUID,
+	deviceId uuid.UUID,
+) (db.GetUserAndDeviceRow, error) {
+	queries, release, err := r.queries(ctx)
+	if err != nil {
+		return db.GetUserAndDeviceRow{}, err
+	}
+	defer release()
+
+	return queries.GetUserAndDevice(
+		ctx,
+		db.GetUserAndDeviceParams{
+			DeviceID: deviceId.String(),
+			UserID:   userId.String(),
+		},
+	)
+}
+
 // func (r *PostgresRepository) EnsureMigration(ctx context.Context, syncCode string, deviceId int64, deviceName string) (int64, error) {
 
 // 	result, err := queries.EnsureMigration(ctx, db.EnsureMigrationParams{
