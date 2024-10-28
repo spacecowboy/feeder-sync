@@ -65,3 +65,7 @@ FROM devices
 JOIN users ON devices.user_db_id = users.db_id
 WHERE devices.device_id = $1 AND users.user_id = $2
 LIMIT 1;
+
+-- name: DeleteOldDevices :exec
+DELETE FROM devices
+WHERE last_seen < $1;

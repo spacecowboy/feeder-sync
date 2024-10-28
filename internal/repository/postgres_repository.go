@@ -185,6 +185,23 @@ func (r *PostgresRepository) RemoveDeviceWithLegacyId(ctx context.Context, user 
 	return device, err
 }
 
+func (r *PostgresRepository) DeleteOldDevices(ctx context.Context) error {
+	queries, release, err := r.queries(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	oldLimit := time.Now().Add(-time.Hour * 24 * 30)
+	return queries.DeleteOldDevices(
+		ctx,
+		pgtype.Timestamptz{
+			Time:  oldLimit,
+			Valid: true,
+		},
+	)
+}
+
 func (r *PostgresRepository) RemoveUser(ctx context.Context, user db.User) (int, error) {
 	queries, release, err := r.queries(ctx)
 	if err != nil {

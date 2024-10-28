@@ -34,6 +34,9 @@ type Repository interface {
 	// NOOP if already exists.
 	// EnsureMigration(ctx context.Context, syncCode string, deviceId int64, deviceName string) (int64, error)
 
+	// Janitor functions
+	DeleteOldDevices(ctx context.Context) error
+
 	// Admin functions
 	TransferUsers(ctx context.Context, repository Repository) error
 	AcceptUser(ctx context.Context, user *db.User) error

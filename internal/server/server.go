@@ -102,6 +102,11 @@ func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.Router.ServeHTTP(w, r)
 }
 
+func (s *FeederServer) DeleteOldDevices() error {
+	ctx := context.Background()
+	return s.repo.DeleteOldDevices(ctx)
+}
+
 func (s *FeederServer) handleHealth(c *gin.Context) {
 	if s.Router != nil && s.repo != nil {
 		c.JSON(http.StatusOK, gin.H{
