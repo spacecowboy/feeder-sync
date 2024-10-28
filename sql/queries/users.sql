@@ -23,3 +23,12 @@ SELECT * FROM users WHERE user_id = $1 LIMIT 1;
 
 -- name: DeleteUser :many
 DELETE FROM users WHERE user_id = $1 RETURNING user_id;
+
+-- name: GetUsersWithoutDevices :many
+SELECT *
+FROM users
+WHERE db_id NOT IN (
+    SELECT user_db_id
+    FROM devices
+)
+LIMIT 10000;

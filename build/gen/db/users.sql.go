@@ -33,6 +33,19 @@ func (q *Queries) DeleteUser(ctx context.Context, userID string) ([]string, erro
 	return items, nil
 }
 
+const deleteUsersWithoutDevices = `-- name: DeleteUsersWithoutDevices :exec
+DELETE FROM users
+WHERE db_id NOT IN (
+    SELECT user_db_id
+    FROM devices
+)
+`
+
+func (q *Queries) DeleteUsersWithoutDevices(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, deleteUsersWithoutDevices)
+	return err
+}
+
 const getAllUsers = `-- name: GetAllUsers :many
 SELECT
     db_id,
@@ -107,6 +120,36 @@ func (q *Queries) GetUserDbIdBySyncCode(ctx context.Context, legacySyncCode stri
 	var db_id int64
 	err := row.Scan(&db_id)
 	return db_id, err
+}
+
+const getUsersWithoutDevices = `-- name: GetUsersWithoutDevices :many
+SELECT db_id, user_id, legacy_sync_code
+FROM users
+WHERE db_id NOT IN (
+    SELECT user_db_id
+    FROM devices
+)
+LIMIT 10000
+`
+
+func (q *Queries) GetUsersWithoutDevices(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, getUsersWithoutDevices)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(&i.DbID, &i.UserID, &i.LegacySyncCode); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const insertUser = `-- name: InsertUser :one

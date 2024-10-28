@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"log"
 	"time"
 )
@@ -11,15 +12,22 @@ type Janitor struct {
 }
 
 func (j *Janitor) Run(server *FeederServer) {
+	ctx := context.Background()
 	j.Stop = make(chan bool)
-	tick := time.Tick(j.Interval)
+	ticker := time.NewTicker(j.Interval)
+	defer ticker.Stop()
+
 	for {
 		select {
-		case <-tick:
+		case <-ticker.C:
 			log.Printf("Running janitor")
-			err := server.DeleteOldDevices()
+			err := server.DeleteOldDevices(ctx)
 			if err != nil {
 				log.Printf("Error deleting old devices: %v", err)
+			}
+			err = server.DeleteUsersWithoutDevices(ctx)
+			if err != nil {
+				log.Printf("Error deleting users without devices: %v", err)
 			}
 		case <-j.Stop:
 			return
