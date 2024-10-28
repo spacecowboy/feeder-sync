@@ -42,6 +42,20 @@ func (r *PostgresRepository) queries(ctx context.Context) (*db.Queries, func(), 
 	return db.New(conn), conn.Release, nil
 }
 
+func (r *PostgresRepository) transaction(ctx context.Context) (*db.Queries, pgx.Tx, func(), error) {
+	conn, err := r.pool.Acquire(ctx)
+	if err != nil {
+		log.Printf("failed to acquire connection: %v", err)
+		return nil, nil, nil, err
+	}
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		log.Printf("failed to begin transaction: %v", err)
+		return nil, nil, nil, err
+	}
+	return db.New(tx), tx, conn.Release, nil
+}
+
 func (r *PostgresRepository) Close(ctx context.Context) error {
 	r.pool.Close()
 	return nil
@@ -185,14 +199,41 @@ func (r *PostgresRepository) RemoveDeviceWithLegacyId(ctx context.Context, user 
 	return device, err
 }
 
-func (r *PostgresRepository) RemoveUser(ctx context.Context, user db.User) (int, error) {
+func (r *PostgresRepository) DeleteOldDevices(ctx context.Context) error {
 	queries, release, err := r.queries(ctx)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	defer release()
 
-	// Would be a good idea to wrap this in a transaction
+	oldLimit := time.Now().Add(-time.Hour * 24 * 30)
+	return queries.DeleteOldDevices(
+		ctx,
+		pgtype.Timestamptz{
+			Time:  oldLimit,
+			Valid: true,
+		},
+	)
+}
+
+func (r *PostgresRepository) GetUsersWithoutDevices(ctx context.Context) ([]db.User, error) {
+	queries, release, err := r.queries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+
+	return queries.GetUsersWithoutDevices(ctx)
+}
+
+func (r *PostgresRepository) RemoveUser(ctx context.Context, user db.User) (int, error) {
+	queries, tx, release, err := r.transaction(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback(ctx)
+	defer release()
+
 	// Delete associated devices
 	_, err = queries.DeleteDevicesWithUserDbId(ctx, user.DbID)
 	if err != nil {
@@ -218,7 +259,35 @@ func (r *PostgresRepository) RemoveUser(ctx context.Context, user db.User) (int,
 	if err != nil {
 		return 0, err
 	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return 0, err
+	}
+
 	return len(userIds), err
+}
+
+func (r *PostgresRepository) DeleteFullySyncedArticles(ctx context.Context) error {
+	queries, release, err := r.queries(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+
+	userRows, err := queries.GetUsersWithDevices(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, userRow := range userRows {
+		err := queries.DeleteArticlesOlderThanDeviceLastSeen(ctx, userRow.User.DbID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (r *PostgresRepository) UpdateLastSeenForDevice(ctx context.Context, device db.Device) error {

@@ -102,6 +102,34 @@ func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.Router.ServeHTTP(w, r)
 }
 
+func (s *FeederServer) DeleteOldDevices(ctx context.Context) error {
+	return s.repo.DeleteOldDevices(ctx)
+}
+
+func (s *FeederServer) DeleteUsersWithoutDevices(ctx context.Context) error {
+	// Get users without devices
+	users, err := s.repo.GetUsersWithoutDevices(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		// Delete user
+		if _, err = s.repo.RemoveUser(ctx, user); err != nil {
+			return err
+		}
+		// Also delete user from cache
+		s.cache.Delete(user.UserID)
+		s.cache.Delete(user.LegacySyncCode)
+	}
+
+	return nil
+}
+
+func (s *FeederServer) DeleteFullySyncedArticles(ctx context.Context) error {
+	return s.repo.DeleteFullySyncedArticles(ctx)
+}
+
 func (s *FeederServer) handleHealth(c *gin.Context) {
 	if s.Router != nil && s.repo != nil {
 		c.JSON(http.StatusOK, gin.H{

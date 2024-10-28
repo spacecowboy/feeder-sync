@@ -27,15 +27,21 @@ func main() {
 
 	listenAddress := config.GetListenAddress()
 
-	router, err := server.NewServerWithPostgres(conn)
+	feederServer, err := server.NewServerWithPostgres(conn)
 	if err != nil {
 		log.Fatalf("main: %v", err)
 	}
-	defer router.Close()
+	defer feederServer.Close()
+
+	// Start the janitor
+	janitor := &server.Janitor{
+		Interval: 60 * time.Minute,
+	}
+	go janitor.Run(feederServer)
 
 	srv := &http.Server{
 		Addr:    listenAddress,
-		Handler: router,
+		Handler: feederServer,
 	}
 
 	// Initializing the server in a goroutine so that
@@ -56,6 +62,9 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down server...")
+
+	// Stop the janitor
+	janitor.Stop <- true
 
 	// The context is used to inform the server it has 5 seconds to finish
 	// the request it is currently handling

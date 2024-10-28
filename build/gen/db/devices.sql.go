@@ -93,6 +93,16 @@ func (q *Queries) DeleteDevicesWithUserDbId(ctx context.Context, userDbID int64)
 	return items, nil
 }
 
+const deleteOldDevices = `-- name: DeleteOldDevices :exec
+DELETE FROM devices
+WHERE last_seen < $1
+`
+
+func (q *Queries) DeleteOldDevices(ctx context.Context, lastSeen pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteOldDevices, lastSeen)
+	return err
+}
+
 const getAllDevices = `-- name: GetAllDevices :many
 SELECT db_id, device_id, legacy_device_id, device_name, last_seen, user_db_id FROM devices
 `

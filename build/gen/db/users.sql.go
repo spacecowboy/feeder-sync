@@ -109,6 +109,77 @@ func (q *Queries) GetUserDbIdBySyncCode(ctx context.Context, legacySyncCode stri
 	return db_id, err
 }
 
+const getUsersWithDevices = `-- name: GetUsersWithDevices :many
+SELECT
+    users.db_id, users.user_id, users.legacy_sync_code,
+    max(devices.last_seen) AS last_seen
+FROM users
+INNER JOIN devices ON users.db_id = devices.user_db_id
+GROUP BY users.db_id
+ORDER BY last_seen DESC
+LIMIT 10000
+`
+
+type GetUsersWithDevicesRow struct {
+	User     User
+	LastSeen interface{}
+}
+
+func (q *Queries) GetUsersWithDevices(ctx context.Context) ([]GetUsersWithDevicesRow, error) {
+	rows, err := q.db.Query(ctx, getUsersWithDevices)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUsersWithDevicesRow
+	for rows.Next() {
+		var i GetUsersWithDevicesRow
+		if err := rows.Scan(
+			&i.User.DbID,
+			&i.User.UserID,
+			&i.User.LegacySyncCode,
+			&i.LastSeen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getUsersWithoutDevices = `-- name: GetUsersWithoutDevices :many
+SELECT db_id, user_id, legacy_sync_code
+FROM users
+WHERE db_id NOT IN (
+    SELECT user_db_id
+    FROM devices
+)
+LIMIT 10000
+`
+
+func (q *Queries) GetUsersWithoutDevices(ctx context.Context) ([]User, error) {
+	rows, err := q.db.Query(ctx, getUsersWithoutDevices)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(&i.DbID, &i.UserID, &i.LegacySyncCode); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertUser = `-- name: InsertUser :one
 INSERT INTO users (user_id, legacy_sync_code)
 VALUES ($1, $2)
