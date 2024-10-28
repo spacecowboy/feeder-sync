@@ -174,9 +174,12 @@ func UpdateLastSeenForDevice(repo repository.Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		device := c.MustGet("device").(db.Device)
 
-		if err := repo.UpdateLastSeenForDevice(c, device); err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
-			return
+		// Only update at most once very minute
+		if time.Since(device.LastSeen.Time) > time.Minute {
+			if err := repo.UpdateLastSeenForDevice(c, device); err != nil {
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+				return
+			}
 		}
 		c.Next()
 	}
