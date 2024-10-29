@@ -103,6 +103,7 @@ func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *FeederServer) DeleteOldDevices(ctx context.Context) error {
+	// They're old - by definition they won't be in the cache
 	return s.repo.DeleteOldDevices(ctx)
 }
 
@@ -266,6 +267,7 @@ func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
 
 		// Also delete user from cache
 		s.cache.Delete(user.UserID)
+		s.cache.Delete(user.LegacySyncCode)
 
 		c.Status(http.StatusNoContent)
 		return
