@@ -13,12 +13,6 @@ import (
 	"github.com/spacecowboy/feeder-sync/internal/server"
 )
 
-const (
-	FEEDER_SYNC_POSTGRES_CONN = "FEEDER_SYNC_POSTGRES_CONN"
-	DATABASE_URL              = "DATABASE_URL"
-	LISTEN_ADDRESS            = "LISTEN_ADDRESS"
-)
-
 func main() {
 	conn, err := config.GetDatabaseConn()
 	if err != nil {
@@ -33,11 +27,14 @@ func main() {
 	}
 	defer feederServer.Close()
 
-	// Start the janitor
-	janitor := &server.Janitor{
-		Interval: 60 * time.Minute,
+	// Start the janitor if the interval is set
+	interval, err := config.GetJanitorInterval()
+	janitor := server.NewJanitor(interval)
+	if err != nil {
+		log.Printf("not starting janitor: %v", err)
+	} else {
+		go janitor.Run(feederServer)
 	}
-	go janitor.Run(feederServer)
 
 	srv := &http.Server{
 		Addr:    listenAddress,
@@ -63,8 +60,8 @@ func main() {
 	<-quit
 	log.Println("Shutting down server...")
 
-	// Stop the janitor
-	janitor.Stop <- true
+	// Stop the janitor (if it is running)
+	janitor.Halt()
 
 	// The context is used to inform the server it has 5 seconds to finish
 	// the request it is currently handling
