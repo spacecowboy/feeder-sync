@@ -19,7 +19,7 @@ import (
 )
 
 type FeederServer struct {
-	repo   repository.Repository
+	Repo   repository.Repository
 	cache  *cache.Cache
 	Router *gin.Engine
 }
@@ -51,7 +51,7 @@ func NewServerWith(
 	)
 
 	server := FeederServer{
-		repo:   repo,
+		Repo:   repo,
 		cache:  cache,
 		Router: router,
 	}
@@ -95,44 +95,15 @@ func NewServerWith(
 }
 
 func (s *FeederServer) Close() error {
-	return s.repo.Close(context.Background())
+	return s.Repo.Close(context.Background())
 }
 
 func (s *FeederServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.Router.ServeHTTP(w, r)
 }
 
-func (s *FeederServer) DeleteOldDevices(ctx context.Context) error {
-	// They're old - by definition they won't be in the cache
-	return s.repo.DeleteOldDevices(ctx)
-}
-
-func (s *FeederServer) DeleteUsersWithoutDevices(ctx context.Context) error {
-	// Get users without devices
-	users, err := s.repo.GetUsersWithoutDevices(ctx)
-	if err != nil {
-		return err
-	}
-
-	for _, user := range users {
-		// Delete user
-		if _, err = s.repo.RemoveUser(ctx, user); err != nil {
-			return err
-		}
-		// Also delete user from cache
-		s.cache.Delete(user.UserID)
-		s.cache.Delete(user.LegacySyncCode)
-	}
-
-	return nil
-}
-
-func (s *FeederServer) DeleteFullySyncedArticles(ctx context.Context) error {
-	return s.repo.DeleteFullySyncedArticles(ctx)
-}
-
 func (s *FeederServer) handleHealth(c *gin.Context) {
-	if s.Router != nil && s.repo != nil {
+	if s.Router != nil && s.Repo != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "Initialized",
 		})
@@ -147,7 +118,7 @@ func (s *FeederServer) handleReady(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c, 1*time.Second)
 	defer cancel()
 	// Check if the database connection is alive
-	if err := s.repo.PingContext(ctx); err != nil {
+	if err := s.Repo.PingContext(ctx); err != nil {
 		log.Printf("handleReady: %s", err.Error())
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
 			"status": "Database connection is not ready",
@@ -181,7 +152,7 @@ func etagValueForInt64(data int64) string {
 func (s *FeederServer) handleDeviceGetV1(c *gin.Context) {
 	user := c.MustGet("user").(db.User)
 
-	etag, err := s.repo.GetDevicesEtag(c, user)
+	etag, err := s.Repo.GetDevicesEtag(c, user)
 	if err != nil {
 		log.Printf("GetLegacyDevicesEtag error: %s", err.Error())
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
@@ -194,7 +165,7 @@ func (s *FeederServer) handleDeviceGetV1(c *gin.Context) {
 		return
 	}
 
-	devices, err := s.repo.GetDevices(c, user)
+	devices, err := s.Repo.GetDevices(c, user)
 	if err != nil {
 		log.Printf("Failed to fetch devices for user %s: %s", user.UserID, err.Error())
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
@@ -236,7 +207,7 @@ func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
 		return
 	}
 
-	device, err := s.repo.RemoveDeviceWithLegacyId(c, user, legacyDeviceId)
+	device, err := s.Repo.RemoveDeviceWithLegacyId(c, user, legacyDeviceId)
 	if err != nil {
 		log.Printf("Failed to delete device %d: %s", legacyDeviceId, err.Error())
 		if err == repository.ErrNoSuchDevice {
@@ -250,7 +221,7 @@ func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
 	s.cache.Delete(legacyDeviceIdString)
 	s.cache.Delete(device.DeviceID)
 
-	devices, err := s.repo.GetDevices(c, user)
+	devices, err := s.Repo.GetDevices(c, user)
 	if err != nil {
 		log.Printf("Failed to fetch devices for user %s: %s", user.UserID, err.Error())
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
@@ -259,7 +230,7 @@ func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
 
 	if len(devices) == 0 {
 		// Last device was deleted - also delete the user
-		if _, err := s.repo.RemoveUser(c, user); err != nil {
+		if _, err := s.Repo.RemoveUser(c, user); err != nil {
 			log.Printf("delete user %s: %s", user.UserID, err.Error())
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad"})
 			return
@@ -293,7 +264,7 @@ func (s *FeederServer) handleDeviceDeleteV1(c *gin.Context) {
 func (s *FeederServer) handleGETFeedsV1(c *gin.Context) {
 	user := c.MustGet("user").(db.User)
 
-	feeds, err := s.repo.GetLegacyFeeds(c, user)
+	feeds, err := s.Repo.GetLegacyFeeds(c, user)
 	if err != nil {
 		if err == repository.ErrNoFeeds {
 			c.Status(http.StatusNoContent)
@@ -326,7 +297,7 @@ func (s *FeederServer) handlePOSTFeedsV1(c *gin.Context) {
 
 	var currentEtag string
 
-	feeds, err := s.repo.GetLegacyFeeds(c, user)
+	feeds, err := s.Repo.GetLegacyFeeds(c, user)
 	if err != nil && err != repository.ErrNoFeeds {
 		log.Printf("PostLegacyFeeds error: %s", err.Error())
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Something bad", "err": err.Error()})
@@ -355,7 +326,7 @@ func (s *FeederServer) handlePOSTFeedsV1(c *gin.Context) {
 
 	newEtag := etagValueForInt64(feedsRequest.ContentHash)
 
-	_, err = s.repo.UpdateLegacyFeeds(
+	_, err = s.Repo.UpdateLegacyFeeds(
 		c,
 		user,
 		feedsRequest.ContentHash,
@@ -393,7 +364,7 @@ func (s *FeederServer) handleGETReadmarkV1(c *gin.Context) {
 		}
 	}
 
-	articles, err := s.repo.GetArticlesUpdatedSince(c, user, since)
+	articles, err := s.Repo.GetArticlesUpdatedSince(c, user, since)
 
 	if err != nil {
 		if err == repository.ErrNoReadMarks {
@@ -441,7 +412,7 @@ func (s *FeederServer) handlePOSTReadmarkV1(c *gin.Context) {
 
 	// TODO: Investigate COPY protocol
 	for _, readmark := range sendRequest.ReadMarks {
-		if _, err := s.repo.AddArticle(c, user, readmark.Encrypted); err != nil {
+		if _, err := s.Repo.AddArticle(c, user, readmark.Encrypted); err != nil {
 			log.Printf("Failed to add article: %v", err.Error())
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to store article"})
 			return
@@ -464,7 +435,7 @@ func (s *FeederServer) handleCreateV1(c *gin.Context) {
 		return
 	}
 
-	userDevice, err := s.repo.RegisterNewUser(c, createChainRequest.DeviceName)
+	userDevice, err := s.Repo.RegisterNewUser(c, createChainRequest.DeviceName)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Badness"})
 		return
@@ -493,7 +464,7 @@ func (s *FeederServer) handleJoinV1(c *gin.Context) {
 		return
 	}
 
-	device, err := s.repo.AddDeviceToUser(c, user, joinChainRequest.DeviceName)
+	device, err := s.Repo.AddDeviceToUser(c, user, joinChainRequest.DeviceName)
 	if err != nil {
 		switch err.Error() {
 		case "user not found":
@@ -525,7 +496,7 @@ func (s *FeederServer) handleCreateV2(c *gin.Context) {
 		return
 	}
 
-	userDevice, err := s.repo.RegisterNewUser(c, createChainRequest.DeviceName)
+	userDevice, err := s.Repo.RegisterNewUser(c, createChainRequest.DeviceName)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Badness"})
 		return
@@ -569,7 +540,7 @@ func (s *FeederServer) handleJoinV2(c *gin.Context) {
 		return
 	}
 
-	device, err := s.repo.AddDeviceToUser(c, user, joinChainRequest.DeviceName)
+	device, err := s.Repo.AddDeviceToUser(c, user, joinChainRequest.DeviceName)
 	if err != nil {
 		switch err.Error() {
 		case "No such user":

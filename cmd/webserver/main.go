@@ -33,7 +33,7 @@ func main() {
 	if err != nil {
 		log.Printf("not starting janitor: %v", err)
 	} else {
-		go janitor.Run(feederServer)
+		go janitor.Run(feederServer.Repo)
 	}
 
 	srv := &http.Server{

@@ -4,6 +4,8 @@ import (
 	"context"
 	"log"
 	"time"
+
+	"github.com/spacecowboy/feeder-sync/internal/repository"
 )
 
 type Janitor struct {
@@ -17,7 +19,7 @@ func NewJanitor(interval time.Duration) *Janitor {
 	}
 }
 
-func (j *Janitor) Run(server *FeederServer) {
+func (j *Janitor) Run(repo repository.Repository) {
 	if j.Interval <= 0 {
 		log.Print("No janitor interval set")
 		return
@@ -31,7 +33,7 @@ func (j *Janitor) Run(server *FeederServer) {
 	for {
 		select {
 		case <-ticker.C:
-			j.RunOnce(server)
+			j.RunOnce(repo)
 		case <-j.Stop:
 			log.Print("Janitor stopped")
 			return
@@ -39,19 +41,21 @@ func (j *Janitor) Run(server *FeederServer) {
 	}
 }
 
-func (j *Janitor) RunOnce(server *FeederServer) {
+func (j *Janitor) RunOnce(repo repository.Repository) {
 	log.Print("Janitor running")
 	ctx := context.Background()
 
-	err := server.DeleteOldDevices(ctx)
+	err := repo.DeleteOldDevices(ctx)
 	if err != nil {
 		log.Printf("Error deleting old devices: %v", err)
 	}
-	err = server.DeleteUsersWithoutDevices(ctx)
+
+	err = DeleteUsersWithoutDevices(ctx, repo)
 	if err != nil {
 		log.Printf("Error deleting users without devices: %v", err)
 	}
-	err = server.DeleteFullySyncedArticles(ctx)
+
+	err = repo.DeleteFullySyncedArticles(ctx)
 	if err != nil {
 		log.Printf("Error deleting fully synced articles: %v", err)
 	}
@@ -61,4 +65,21 @@ func (j *Janitor) RunOnce(server *FeederServer) {
 
 func (j *Janitor) Halt() {
 	j.Stop <- true
+}
+
+func DeleteUsersWithoutDevices(ctx context.Context, repo repository.Repository) error {
+	// Get users without devices
+	users, err := repo.GetUsersWithoutDevices(ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, user := range users {
+		// Delete user
+		if _, err = repo.RemoveUser(ctx, user); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
