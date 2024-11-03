@@ -29,7 +29,11 @@ func main() {
 
 	// Start the janitor if the interval is set
 	interval, err := config.GetJanitorInterval()
-	janitor := server.NewJanitor(interval)
+	janitor := server.NewJanitor(
+		interval,
+		config.GetStartCallbackUrl(),
+		config.GetEndCallbackUrl(),
+	)
 	if err != nil {
 		log.Printf("not starting janitor: %v", err)
 	} else {

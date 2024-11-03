@@ -28,6 +28,10 @@ func main() {
 	defer repo.Close(ctx)
 
 	// Interval doesn't matter for the janitor in this case
-	janitor := server.NewJanitor(time.Hour)
+	janitor := server.NewJanitor(
+		time.Hour,
+		config.GetStartCallbackUrl(),
+		config.GetEndCallbackUrl(),
+	)
 	janitor.RunOnce(repo)
 }
