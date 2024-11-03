@@ -13,6 +13,8 @@ const (
 	LISTEN_ADDRESS            = "LISTEN_ADDRESS"
 	JANITOR_INTERVAL          = "JANITOR_INTERVAL"
 	READY_CALLBACK_URL        = "READY_CALLBACK_URL"
+	START_CALLBACK_URL        = "START_CALLBACK_URL"
+	END_CALLBACK_URL          = "END_CALLBACK_URL"
 )
 
 func GetDatabaseConn() (string, error) {
@@ -48,4 +50,12 @@ func GetJanitorInterval() (time.Duration, error) {
 
 func GetReadyCallbackUrl() string {
 	return os.Getenv(READY_CALLBACK_URL)
+}
+
+func GetStartCallbackUrl() string {
+	return os.Getenv(START_CALLBACK_URL)
+}
+
+func GetEndCallbackUrl() string {
+	return os.Getenv(END_CALLBACK_URL)
 }

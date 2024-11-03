@@ -3,19 +3,30 @@ package server
 import (
 	"context"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/spacecowboy/feeder-sync/internal/repository"
 )
 
 type Janitor struct {
-	Interval time.Duration
-	Stop     chan bool
+	Interval         time.Duration
+	Stop             chan bool
+	client           *http.Client
+	startCallbackUrl string
+	endCallbackUrl   string
 }
 
-func NewJanitor(interval time.Duration) *Janitor {
+func NewJanitor(
+	interval time.Duration,
+	startCallbackUrl string,
+	endCallbackUrl string,
+) *Janitor {
 	return &Janitor{
-		Interval: interval,
+		Interval:         interval,
+		client:           &http.Client{},
+		startCallbackUrl: startCallbackUrl,
+		endCallbackUrl:   endCallbackUrl,
 	}
 }
 
@@ -45,6 +56,10 @@ func (j *Janitor) RunOnce(repo repository.Repository) {
 	log.Print("Janitor running")
 	ctx := context.Background()
 
+	if err := GetCallbackUrl(ctx, j.client, j.startCallbackUrl); err != nil {
+		log.Printf("startCallback: %v", err)
+	}
+
 	err := repo.DeleteOldDevices(ctx)
 	if err != nil {
 		log.Printf("Error deleting old devices: %v", err)
@@ -61,6 +76,10 @@ func (j *Janitor) RunOnce(repo repository.Repository) {
 	}
 
 	log.Print("Janitor done")
+
+	if err := GetCallbackUrl(ctx, j.client, j.endCallbackUrl); err != nil {
+		log.Printf("endCallback: %v", err)
+	}
 }
 
 func (j *Janitor) Halt() {

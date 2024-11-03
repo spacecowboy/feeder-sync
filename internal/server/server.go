@@ -132,6 +132,10 @@ func (s *FeederServer) handleReady(c *gin.Context) {
 	}
 
 	// Call the health callback if it is set, with a timeout of 1 second
+	if err := GetCallbackUrl(ctx, s.client, s.readyCallbackUrl); err != nil {
+		log.Printf("readyCallback: %s", err.Error())
+	}
+
 	if s.readyCallbackUrl != "" {
 		ctx, cancel := context.WithTimeout(c, 1*time.Second)
 		defer cancel()
