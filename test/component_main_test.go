@@ -71,7 +71,7 @@ func TestMain(m *testing.M) {
 	}
 
 	// Start the server
-	srv, err := server.NewServerWithPostgres(connString)
+	srv, err := server.NewServerWithPostgres(connString, "")
 	if err != nil {
 		fmt.Printf("Failed to start server: %s\n", err.Error())
 		os.Exit(1)
