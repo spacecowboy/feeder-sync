@@ -19,12 +19,14 @@ import (
 )
 
 type FeederServer struct {
-	Repo   repository.Repository
-	cache  *cache.Cache
-	Router *gin.Engine
+	Repo             repository.Repository
+	cache            *cache.Cache
+	Router           *gin.Engine
+	readyCallbackUrl string
+	client           *http.Client
 }
 
-func NewServerWithPostgres(connString string) (*FeederServer, error) {
+func NewServerWithPostgres(connString string, healthCallbackUrl string) (*FeederServer, error) {
 	ctx := context.Background()
 
 	pool, err := pgxpool.New(ctx, connString)
@@ -36,12 +38,13 @@ func NewServerWithPostgres(connString string) (*FeederServer, error) {
 	// Default expiration time is 1 minute, cleanup interval is 30 seconds
 	cache := cache.New(time.Minute, 30*time.Second)
 
-	return NewServerWith(repo, cache)
+	return NewServerWith(repo, cache, healthCallbackUrl)
 }
 
 func NewServerWith(
 	repo repository.Repository,
 	cache *cache.Cache,
+	healthCallbackUrl string,
 ) (*FeederServer, error) {
 	router := gin.New()
 	router.Use(
@@ -51,9 +54,11 @@ func NewServerWith(
 	)
 
 	server := FeederServer{
-		Repo:   repo,
-		cache:  cache,
-		Router: router,
+		Repo:             repo,
+		cache:            cache,
+		Router:           router,
+		readyCallbackUrl: healthCallbackUrl,
+		client:           &http.Client{},
 	}
 
 	// Middleware
@@ -124,6 +129,25 @@ func (s *FeederServer) handleReady(c *gin.Context) {
 			"status": "Database connection is not ready",
 		})
 		return
+	}
+
+	// Call the health callback if it is set, with a timeout of 1 second
+	if s.readyCallbackUrl != "" {
+		ctx, cancel := context.WithTimeout(c, 1*time.Second)
+		defer cancel()
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.readyCallbackUrl, nil)
+		if err != nil {
+			log.Printf("readyCallback req: %s", err.Error())
+		} else {
+			resp, err := s.client.Do(req)
+			if err != nil {
+				log.Printf("readyCallback do: %s", err.Error())
+			} else {
+				if resp.StatusCode >= 400 {
+					log.Printf("readyCallback do: %d", resp.StatusCode)
+				}
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

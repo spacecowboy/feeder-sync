@@ -21,7 +21,7 @@ func main() {
 
 	listenAddress := config.GetListenAddress()
 
-	feederServer, err := server.NewServerWithPostgres(conn)
+	feederServer, err := server.NewServerWithPostgres(conn, config.GetReadyCallbackUrl())
 	if err != nil {
 		log.Fatalf("main: %v", err)
 	}
