@@ -14,7 +14,7 @@ import (
 func main() {
 	conn, err := config.GetDatabaseConn()
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 
 	ctx := context.Background()

@@ -113,7 +113,7 @@ func (suite *YamlTestSuite) TestCases() {
 
 			// Ensure the body is a valid JSON
 			if tc.Request.Body != "" {
-				err := json.Unmarshal([]byte(tc.Request.Body), &map[string]interface{}{})
+				err := json.Unmarshal([]byte(tc.Request.Body), &map[string]any{})
 				require.NoErrorf(t, err, "Body was %s", tc.Request.Body)
 			}
 
@@ -144,7 +144,7 @@ func (suite *YamlTestSuite) TestCases() {
 			}
 
 			if tc.Response.Body != "" {
-				var expectedBody, actualBody map[string]interface{}
+				var expectedBody, actualBody map[string]any
 				// Inject variables into the expected response body
 				tc.Response.Body = suite.replacevariables(tc.Response.Body)
 
