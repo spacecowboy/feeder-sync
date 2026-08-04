@@ -63,7 +63,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	connString = fmt.Sprintf("postgresql://username:password@%s:%d/feedertest?sslmode=disable", host, port.Int())
+	connString = fmt.Sprintf("postgresql://username:password@%s:%d/feedertest?sslmode=disable", host, port.Num())
 
 	if err := migrations.RunMigrations(connString); err != nil {
 		fmt.Printf("Failed to run migrations: %s\n", err.Error())
